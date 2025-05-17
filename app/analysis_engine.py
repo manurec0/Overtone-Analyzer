@@ -1,45 +1,36 @@
-import pyaudio
-import soundfile as sf
 import numpy as np
+import pysptk
+from utils.helpers import freq_to_note_name, freq_to_note_index
 
 class AnalysisEngine:
-    def __init__(self, rate=44100, chunk=4096):
+    def __init__(self, frame_length=2048, hopsize=256, rate=44100):
+        self.frame_length = frame_length
+        self.hopsize = hopsize
         self.rate = rate
-        self.chunk = chunk
-        self.mic_stream = None
-        self.wav_data = None
-        self.wav_position = 0
-        self.source = "wav"
-        self.playing = False
 
-    def load_wav(self, file_path):
-        data, samplerate = sf.read(file_path, dtype='float32', always_2d=True)
-        self.wav_data = data[:, 0]
-        self.wav_position = 0
-        self.rate = samplerate
-        return len(self.wav_data) / self.rate
+    def detect_pitch(self, signal):
+        if len(signal) < self.frame_length:
+            return None
+        frame = signal[-self.frame_length:]
+        f0 = pysptk.swipe(frame.astype(np.float32), fs=self.rate, hopsize=self.hopsize, otype="f0")
+        return next((p for p in f0 if p > 0), None)
 
-    def start_mic(self):
-        if self.mic_stream is None:
-            self.mic_stream = pyaudio.PyAudio().open(format=pyaudio.paInt16, channels=1,
-                                                     rate=self.rate, input=True, frames_per_buffer=self.chunk)
-        self.source = "mic"
+    def process_pitch_detection_full(self, data):
+        times = []
+        note_indices = []
 
-    def stop_mic(self):
-        if self.mic_stream:
-            self.mic_stream.stop_stream()
-            self.mic_stream.close()
-            self.mic_stream = None
-        self.source = "wav"
+        if data.dtype != np.float32:
+            data = data.astype(np.float32)
+        data = np.clip(data, -1.0, 1.0)
 
-    def get_next_chunk(self):
-        if self.source == "mic" and self.mic_stream:
-            data = self.mic_stream.read(self.chunk, exception_on_overflow=False)
-            return np.frombuffer(data, dtype=np.int16).astype(np.float32) / 32768.0
-        elif self.source == "wav" and self.wav_data is not None:
-            idx = int(self.wav_position * self.rate)
-            chunk = self.wav_data[idx:idx + self.chunk]
-            self.wav_position += self.chunk / self.rate
-            return np.pad(chunk, (0, self.chunk - len(chunk))) if len(chunk) < self.chunk else chunk
-        else:
-            return np.zeros(self.chunk, dtype=np.float32)
+        for i in range(0, len(data) - self.frame_length, self.frame_length):
+            chunk = data[i:i + self.frame_length]
+            f0 = self.detect_pitch(chunk)
+            if f0 and f0 > 0:
+                note_index = freq_to_note_index(f0)
+                if note_index is not None:
+                    times.append(i / self.rate)
+                    note_indices.append(note_index)
+
+        print(f"✅ Full pitch detection finished. {len(times)} valid notes.")
+        return np.array(times), np.array(note_indices)
