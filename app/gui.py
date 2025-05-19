@@ -6,6 +6,7 @@ class AppGUI(QMainWindow):
     def __init__(self, audio_manager, player, analysis_engine):
         super().__init__()
 
+        self.isLive = False
         self.audio_manager = audio_manager
         self.player = player
         self.analysis_engine = analysis_engine
@@ -29,6 +30,7 @@ class AppGUI(QMainWindow):
         self.forward_5s_btn = QPushButton("⏩ 5s", clicked=self.forward_5s)
         self.forward_end_btn = QPushButton("⏭", clicked=self.forward_to_end)
         self.record_btn = QPushButton("🔴 Record", clicked=self.toggle_record)
+        self.live_btn = QPushButton("Live Mode", clicked=self.toggle_live_mode)
 
         controls_inner_layout.addWidget(self.rewind_start_btn)
         controls_inner_layout.addWidget(self.rewind_5s_btn)
@@ -36,6 +38,8 @@ class AppGUI(QMainWindow):
         controls_inner_layout.addWidget(self.forward_5s_btn)
         controls_inner_layout.addWidget(self.forward_end_btn)
         controls_inner_layout.addWidget(self.record_btn)
+
+        top_bar_layout.addWidget(self.live_btn)
 
         top_bar_layout.addStretch()
         top_bar_layout.addLayout(controls_inner_layout)
@@ -61,7 +65,7 @@ class AppGUI(QMainWindow):
         bottom_layout.addStretch()
 
         self.mode_selector = QComboBox()
-        self.mode_selector.addItems(["Waveform"])
+        self.mode_selector.addItems(["Waveform", "Fundamental Pitch Detection"])
         self.mode_selector.currentTextChanged.connect(self.change_mode)
         bottom_layout.addWidget(self.mode_selector)
 
@@ -69,8 +73,8 @@ class AppGUI(QMainWindow):
         filepath, _ = QFileDialog.getOpenFileName(self, "Open WAV File", "", "WAV files (*.wav)")
         if filepath:
             duration = self.audio_manager.load_wav(filepath)
-            self.player.load_file(filepath)
-            self.visualization.plot_waveform(self.audio_manager.wav_data, duration)
+            self.player.load_buffer(self.audio_manager.wav_data, self.audio_manager.get_samplerate())
+            self.visualization.set_mode(self.visualization.mode)  # Automatically plots depending on mode
             self.file_display.setText(filepath)
             self.play_pause_btn.setEnabled(True)
             self.play_pause_btn.setText("▶️ Play")
@@ -139,6 +143,33 @@ class AppGUI(QMainWindow):
                 print("⚠️ No data recorded.")
                 self.play_pause_btn.setEnabled(False)
             self.record_btn.setText("🔴 Record")
+
+    def toggle_live_mode(self):
+        self.isLive = not self.isLive
+        if self.isLive:
+            print("✅ Live Feed mode activated")
+            self.start_live_mode()
+            self.live_btn.setText("Stop Live Mode")
+            self.play_pause_btn.setEnabled(False)
+            self.record_btn.setEnabled(False)
+        else:
+            print("🛑 Live Feed mode deactivated")
+            self.stop_live_mode()
+            self.live_btn.setText("Live Mode")
+            self.play_pause_btn.setEnabled(True)
+            self.record_btn.setEnabled(True)
+
+    def start_live_mode(self):
+        def live_callback(audio_chunk):
+            result = self.analysis_engine.process_live_frame(audio_chunk)
+            self.visualization.update_live_visualization(result)
+
+        self.audio_manager.start_live_mode(live_callback)
+        self.visualization.set_mode(self.visualization.mode)
+
+    def stop_live_mode(self):
+        self.audio_manager.stop_current_stream()
+        self.visualization.clear_visualization()  # Optional
 
     def change_mode(self, mode):
         self.visualization.set_mode(mode)

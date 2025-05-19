@@ -3,17 +3,21 @@ import soundfile as sf
 import pyaudio
 import threading
 
+
 class AudioManager:
     def __init__(self):
         self.source = None
         self.wav_data = None
-        self.samplerate = None
+        self.samplerate = 44100  # Fixed default samplerate
+        self.chunk_size = 4096
         self.recording_buffer = np.zeros(0, dtype=np.float32)
         self.recording_lock = threading.Lock()
 
         self._pyaudio_instance = pyaudio.PyAudio()
         self._recording_stream = None
         self._stop_recording_flag = threading.Event()
+        self._live_stream = None
+        self.live_callback = None
 
     def load_wav(self, filepath):
         wav_data, samplerate = sf.read(filepath)
@@ -47,7 +51,7 @@ class AudioManager:
         self._recording_stream = self._pyaudio_instance.open(
             format=pyaudio.paInt16,
             channels=1,
-            rate=44100,
+            rate=self.samplerate,
             input=True,
             frames_per_buffer=1024,
             stream_callback=callback
@@ -69,4 +73,34 @@ class AudioManager:
             return np.copy(self.recording_buffer)
 
     def get_samplerate(self):
-        return 44100
+        return self.samplerate
+
+    def start_live_mode(self, callback):
+        self.stop_current_stream()
+        self.live_callback = callback
+        self.source = "mic"
+
+        self._live_stream = self._pyaudio_instance.open(
+            format=pyaudio.paInt16,
+            channels=1,
+            rate=self.samplerate,
+            input=True,
+            frames_per_buffer=self.chunk_size,
+            stream_callback=self._live_stream_callback
+        )
+        self._live_stream.start_stream()
+        print("🎧 Live Mode stream started")
+
+    def _live_stream_callback(self, in_data, frame_count, time_info, status):
+        if self.live_callback:
+            audio_array = np.frombuffer(in_data, dtype=np.int16).astype(np.float32)
+            self.live_callback(audio_array)
+        return (None, pyaudio.paContinue)
+
+    def stop_current_stream(self):
+        if self._live_stream:
+            self._live_stream.stop_stream()
+            self._live_stream.close()
+            self._live_stream = None
+            print("🛑 Live stream stopped")
+        self.live_callback = None
