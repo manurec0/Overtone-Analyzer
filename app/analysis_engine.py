@@ -40,40 +40,107 @@ class AnalysisEngine:
         print(f"✅ Full pitch detection finished. {len(times)} valid notes.")
         return np.array(times), np.array(note_indices)
 
-    def process_live_frame(self, audio_chunk):
-        # Ensure float32 for consistency
-        signal = audio_chunk.astype(np.float32)
+    @staticmethod
+    def smooth_spectrum(mag, window_size=5):
+        return np.convolve(mag, np.ones(window_size) / window_size, mode='same')
 
-        # --- 1. Pitch Detection ---
+    @staticmethod
+    def parabolic_peak(mag, idx):
+        if 1 <= idx < len(mag) - 1:
+            alpha = mag[idx - 1]
+            beta = mag[idx]
+            gamma = mag[idx + 1]
+            p = 0.5 * (alpha - gamma) / (alpha - 2 * beta + gamma + 1e-6)
+            return beta - 0.25 * (alpha - gamma) * p
+        return mag[idx]
+
+    def detect_active_harmonic_dynamic(self, freqs, magnitude, fundamental, max_harmonic=16):
+        if fundamental is None:
+            return None, None
+
+        best_harmonic = None
+        best_magnitude = -np.inf
+
+        for n in range(4, max_harmonic + 1):  # Skip H1
+            harmonic_freq = n * fundamental
+            if harmonic_freq >= self.rate / 2:
+                continue
+
+            idx = np.argmin(np.abs(freqs - harmonic_freq))
+            peak_mag = self.parabolic_peak(magnitude, idx)
+
+            # Dynamic thresholds (you can adjust if needed)
+            if n <= 6:
+                threshold = -60
+            elif n <= 12:
+                threshold = -50
+            else:
+                threshold = -40
+
+            if peak_mag > threshold and peak_mag > best_magnitude:
+                best_magnitude = peak_mag
+                best_harmonic = n
+
+        return best_harmonic, best_magnitude
+
+    def get_harmonic_info(self, fundamental, harmonic_number):
+        freq = fundamental * harmonic_number
+        note = helpers.freq_to_note_name(freq)
+        intervals = {
+            1: "Unison", 2: "Octave", 3: "Octave + Fifth", 4: "2 Octaves",
+            5: "2 Octaves + Major Third", 6: "2 Octaves + Fifth",
+            7: "2 Octaves + Minor Seventh", 8: "3 Octaves",
+            9: "3 Octaves + Major Second", 10: "3 Octaves + Major Third",
+            11: "3 Octaves + Augmented Fourth", 12: "3 Octaves + Fifth",
+            13: "3 Octaves + Minor Sixth", 14: "3 Octaves + Minor Seventh",
+            15: "3 Octaves + Major Seventh", 16: "4 Octaves"
+        }
+        interval = intervals.get(harmonic_number, f"{harmonic_number}th Harmonic")
+        return f"{note} ({interval})"
+
+    def process_live_frame(self, audio_chunk):
+        signal = audio_chunk.astype(np.float32)
+        peak = np.max(np.abs(signal)) + 1e-6
+        signal = signal / peak
+
         pitch = self.detect_pitch(signal)
 
-        # --- 2. FFT Analysis ---
         window = np.hanning(len(signal))
-        fft_result = np.fft.rfft(signal * window, n=self.frame_length * 2)
-        freqs = np.fft.rfftfreq(len(fft_result), 1 / self.rate)
+        fft_size = self.frame_length * 2
+        fft_result = np.fft.rfft(signal * window, n=fft_size)
+        freqs = np.fft.rfftfreq(fft_size, 1 / self.rate)
         magnitude = 20 * np.log10(np.abs(fft_result) + 1e-6)
+        magnitude = self.smooth_spectrum(magnitude)
 
-        # --- 3. Harmonic Detection (Optional) ---
+
         harmonics_info = []
+        active_harmonic = None
+        harmonic_info_str = None
+
         if pitch:
-            for n in range(1, 17):  # First 16 harmonics
+            for n in range(1, 17):
                 harmonic_freq = pitch * n
                 if harmonic_freq > self.rate / 2:
                     break
                 idx = np.argmin(np.abs(freqs - harmonic_freq))
+                #mag = self.parabolic_peak(magnitude, idx) # remove parabolic interpolation
                 harmonics_info.append({
                     "harmonic": n,
                     "freq": freqs[idx],
                     "magnitude": magnitude[idx]
                 })
 
-        # --- Return structured result ---
+            best_h, best_mag = self.detect_active_harmonic_dynamic(freqs, magnitude, pitch)
+            if best_h:
+                active_harmonic = best_h
+                harmonic_info_str = self.get_harmonic_info(pitch, best_h)
+
         return {
             "signal": signal,
             "pitch": pitch,
             "freqs": freqs,
             "magnitude": magnitude,
             "harmonics": harmonics_info,
+            "active_harmonic": active_harmonic,
+            "harmonic_info": harmonic_info_str
         }
-
-
