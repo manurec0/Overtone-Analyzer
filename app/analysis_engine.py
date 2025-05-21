@@ -71,11 +71,11 @@ class AnalysisEngine:
 
             # Dynamic thresholds (you can adjust if needed)
             if n <= 6:
-                threshold = -60
+                threshold = 30
             elif n <= 12:
-                threshold = -50
+                threshold = 20
             else:
-                threshold = -40
+                threshold = 10
 
             if peak_mag > threshold and peak_mag > best_magnitude:
                 best_magnitude = peak_mag

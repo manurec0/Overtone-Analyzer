@@ -1,4 +1,5 @@
-from PySide6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QFileDialog, QComboBox, QLineEdit
+from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QFileDialog, QComboBox,
+                               QLineEdit, QLabel)
 from PySide6.QtCore import Qt
 from app.visualization import Visualization
 
@@ -49,6 +50,7 @@ class AppGUI(QMainWindow):
         # Visualization
         self.visualization = Visualization()
         main_layout.addWidget(self.visualization)
+        self.visualization.live_status_update.connect(self.update_live_status_label)
 
         # Bottom Bar Layout
         bottom_layout = QHBoxLayout()
@@ -64,10 +66,20 @@ class AppGUI(QMainWindow):
         bottom_layout.addWidget(self.file_display)
         bottom_layout.addStretch()
 
+        # Mode Drop Down Menu
         self.mode_selector = QComboBox()
         self.mode_selector.addItems(["Waveform", "Fundamental Pitch Detection", "Spectrogram", "Overtone Profile"])
         self.mode_selector.currentTextChanged.connect(self.change_mode)
         bottom_layout.addWidget(self.mode_selector)
+
+        # Display Labels
+
+        self.pitch_label = QLabel("Note: ...")
+        self.harmonic_label = QLabel("Active Harmonic: ...")
+        self.pitch_label.setStyleSheet("color: white; font-size: 14px;")
+        self.harmonic_label.setStyleSheet("color: white; font-size: 14px;")
+        main_layout.addWidget(self.pitch_label)
+        main_layout.addWidget(self.harmonic_label)
 
     def load_wav(self):
         filepath, _ = QFileDialog.getOpenFileName(self, "Open WAV File", "", "WAV files (*.wav)")
@@ -158,6 +170,13 @@ class AppGUI(QMainWindow):
             self.live_btn.setText("Live Mode")
             self.play_pause_btn.setEnabled(True)
             self.record_btn.setEnabled(True)
+
+    #@Slot(str, bool)
+    def update_live_status_label(self, text, is_pitch):
+        if is_pitch:
+            self.pitch_label.setText(text)
+        else:
+            self.harmonic_label.setText(text)
 
     def start_live_mode(self):
         def live_callback(audio_chunk):

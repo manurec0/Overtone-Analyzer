@@ -43,7 +43,9 @@ class Playhead:
 
 class Visualization(QWidget):
 
+    # Signals
     plot_overtone_signal = Signal(object, object)  # (pitch, harmonics_info)
+    live_status_update = Signal(str, bool)  # text, visible
 
     def __init__(self):
         super().__init__()
@@ -105,11 +107,12 @@ class Visualization(QWidget):
         self.frame_duration = audio_manager.chunk_size / audio_manager.get_samplerate()
 
     def update_live_visualization(self, result):
+        pitch = result["pitch"]
         if self.mode == "Waveform":
             self.plot_live_waveform(result["signal"])
 
         elif self.mode == "Fundamental Pitch Detection":
-            pitch = result["pitch"]
+            #pitch = result["pitch"]
             if pitch:
                 note_index = freq_to_note_index(pitch)
                 if note_index is not None:
@@ -125,10 +128,23 @@ class Visualization(QWidget):
             self.plot_spectrogram_frame(result["magnitude"])
 
         elif self.mode == "Overtone Profile":
-            pitch = result["pitch"]
+            #pitch = result["pitch"]
             harmonics = result["harmonics"]
             self.plot_overtone_signal.emit(pitch, harmonics)
 
+        if pitch:
+            note = freq_to_note_name(pitch)
+            pitch_label = f"Note: {note} | {pitch:.1f} Hz"
+            self.live_status_update.emit(pitch_label, True)
+
+            if result.get("active_harmonic") and result.get("harmonic_info"):
+                harmonic_label = f"Active Harmonic: H{result['active_harmonic']} ({result['harmonic_info']})"
+                self.live_status_update.emit(harmonic_label, False)
+            else:
+                self.live_status_update.emit("Active Harmonic: ...", False)
+        else:
+            self.live_status_update.emit("Note: ...", True)
+            self.live_status_update.emit("Active Harmonic: ...", False)
 
     def plot_live_piano_roll(self, times, indices):
         if self.pitch_scatter:
@@ -206,7 +222,7 @@ class Visualization(QWidget):
         mags = []
         threshold_mags = []
 
-        base_threshold = 20  # dBFS
+        base_threshold = 0  # dBFS
         decay = np.linspace(0, 15, 16)
 
         for h in harmonics_info:
