@@ -6,3 +6,5 @@ class AppState:
         self.isRecording = False
         self.isPlaying = False
         self.isEnded = False
+        self.hasFile = False
+        self.isOscilloscope = False

@@ -2,13 +2,14 @@ import numpy as np
 import pysptk
 import utils.helpers as helpers
 
+
 class AnalysisEngine:
     def __init__(self, frame_length=4096, hopsize=256, rate=44100):
         self.frame_length = frame_length
         self.hopsize = hopsize
         self.rate = rate
 
-    def detect_pitch(self, signal, min_pitch=20.0, max_pitch=2000.0):
+    def detect_pitch(self, signal, min_pitch=20.0, max_pitch=700.0):
         if len(signal) < self.frame_length:
             return None
         frame = signal[-self.frame_length:]
@@ -144,3 +145,33 @@ class AnalysisEngine:
             "active_harmonic": active_harmonic,
             "harmonic_info": harmonic_info_str
         }
+
+    def compute_full_spectrogram(self, data, n_fft=4096, hop_size=256):
+        if data.ndim > 1:
+            data = data.mean(axis=1)  # Convert to mono
+
+        data = data.astype(np.float32)
+        peak = np.max(np.abs(data)) + 1e-6
+        data = data / peak  # Normalize
+
+        n_frames = 1 + (len(data) - n_fft) // hop_size
+        spectrogram = np.empty((n_fft // 2 + 1, n_frames), dtype=np.float32)
+
+        window = np.hanning(n_fft)
+        for i in range(n_frames):
+            start = i * hop_size
+            end = start + n_fft
+            frame = data[start:end]
+            if len(frame) < n_fft:
+                frame = np.pad(frame, (0, n_fft - len(frame)))
+
+            fft_result = np.fft.rfft(frame * window)
+            magnitude_db = 20 * np.log10(np.abs(fft_result) + 1e-6)
+            spectrogram[:, i] = magnitude_db
+
+        freqs = np.fft.rfftfreq(n_fft, d=1.0 / self.rate)
+        times = np.arange(n_frames) * hop_size / self.rate
+
+        print(f"✅ Computed spectrogram: shape = {spectrogram.shape}")
+        return spectrogram, freqs, times
+

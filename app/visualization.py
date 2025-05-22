@@ -58,6 +58,7 @@ class Visualization(QWidget):
 
         self.waveform_cache = None
         self.pitch_detection_cache = None
+        self.full_spectrogram_cache = None
 
         # 🔽 NEW live plotting buffers
         self.live_note_times = []
@@ -76,6 +77,8 @@ class Visualization(QWidget):
         self.plot_item.showGrid(x=True, y=True)
         self.plot_item.setLabel('bottom', 'Time', units='s')
         self.playhead = Playhead(self.plot_item)
+        self.playhead.line.setZValue(100)  # Higher Z = always on top
+
         self.timer = QTimer()
         self.timer.timeout.connect(self.update_loop)
 
@@ -92,7 +95,7 @@ class Visualization(QWidget):
         self.spectrogram_width = 200  # number of time frames
         self.spectrogram_height = 2048  # N_FFT // 2 + 1
         self.spectrogram_vmin = -90
-        self.spectrogram_vmax = 0
+        self.spectrogram_vmax = 50
 
         # Overtone Profile
         self.overtone_bars = []
@@ -106,6 +109,41 @@ class Visualization(QWidget):
         self.playhead.player = self.player
         self.timer.start(16)
         self.frame_duration = audio_manager.chunk_size / audio_manager.get_samplerate()
+
+    def update_loop(self):
+        if self.is_recording:
+            data = self.audio_manager.get_recording_data()
+            if len(data) > 0:
+                if self.mode == "Waveform":
+                    self.plot_live_waveform(data)
+                duration = len(data) / self.audio_manager.get_samplerate()
+                self.playhead.update_position(duration)
+        elif self.player:
+            if self.player.needs_reload:
+                print("🔄 Reload triggered by end reached flag in main loop")
+                self.player.reload_file()
+            current_time = self.player.get_time()
+            if self.player.is_playing():
+                self.playhead.update_position(current_time)
+                if self.audio_manager and self.audio_manager.wav_data is not None:
+                    sr = self.audio_manager.get_samplerate()
+                    current_sample = int(current_time * sr)
+
+                    frame_size = self.analysis_engine.frame_length
+                    start = max(0, current_sample - frame_size)
+                    end = start + frame_size
+
+                    signal = self.audio_manager.wav_data[start:end]
+                    if len(signal) == frame_size:
+                        result = self.analysis_engine.process_live_frame(signal)
+
+                        if self.mode == "Waveform" and self.app_state.isOscilloscope:
+                            self.plot_oscilloscope_waveform(result["signal"])
+                        elif self.mode == "Overtone Profile":
+                            pitch = result.get("pitch")
+                            harmonics = result.get("harmonics")
+                            self.plot_overtone_signal.emit(pitch, harmonics)
+                        self.update_text_labels(result)
 
     def update_live_visualization(self, result):
         pitch = result["pitch"]
@@ -132,6 +170,11 @@ class Visualization(QWidget):
             #pitch = result["pitch"]
             harmonics = result["harmonics"]
             self.plot_overtone_signal.emit(pitch, harmonics)
+
+        self.update_text_labels(result)
+
+    def update_text_labels(self, result):
+        pitch = result.get("pitch")
 
         if pitch:
             note = freq_to_note_name(pitch)
@@ -167,14 +210,16 @@ class Visualization(QWidget):
         self.plot_widget.setXRange(0, duration, padding=0)
 
     def plot_live_waveform(self, data):
-        samplerate = self.audio_manager.get_samplerate()
-        chunk_size = len(data)
+        x, y = self.get_waveform_points(data)
+        self.waveform_curve.setData(x, y, pen=pg.mkPen('darkred', width=1))
+        self.plot_widget.setXRange(0, len(data), padding=0)
+        self.plot_widget.setYRange(-1.5, 1.5) # adjust scale
 
-        x = np.arange(0, chunk_size)
-        self.waveform_curve.setData(x, data, pen=pg.mkPen('darkred', width=1))
-
-        self.plot_widget.setXRange(0, chunk_size, padding=0)
-        self.plot_widget.setYRange(-1.5, 1.5)  # or adjust based on signal scale
+    def plot_oscilloscope_waveform(self, signal):
+        x, y = self.get_waveform_points(signal)
+        self.waveform_curve.setData(x, y, pen=pg.mkPen('white', width=1))
+        self.plot_widget.setXRange(0, len(signal), padding=0)
+        self.plot_widget.setYRange(-1.5, 1.5)
 
     def plot_full_pitch_detection(self, data):
         if self.pitch_detection_cache is None:
@@ -250,22 +295,6 @@ class Visualization(QWidget):
         if x_min < 0:
             view_box.setXRange(0, x_max - x_min, padding=0)
 
-    def update_loop(self):
-        if self.is_recording:
-            data = self.audio_manager.get_recording_data()
-            if len(data) > 0:
-                if self.mode == "Waveform":
-                    self.plot_live_waveform(data)
-                duration = len(data) / self.audio_manager.get_samplerate()
-                self.playhead.update_position(duration)
-        elif self.player:
-            if self.player.needs_reload:
-                print("🔄 Reload triggered by end reached flag in main loop")
-                self.player.reload_file()
-            current_time = self.player.get_time()
-            if self.player.is_playing():
-                self.playhead.update_position(current_time)
-
     def start_recording_mode(self):
         self.is_recording = True
         self.set_mode("Waveform")
@@ -303,8 +332,9 @@ class Visualization(QWidget):
             if self.app_state.isLive:
                 self.plot_item.setLabel('bottom', 'Samples')
                 #self.plot_item.getAxis('bottom').setTicks(None)
-                self.playhead.visible = False
+                self.show_playhead(False)
             else:
+                self.show_playhead(True)
                 self.plot_item.setLabel('bottom', 'Time (s)')
                 #self.plot_item.getAxis('bottom').setTicks(None)
 
@@ -316,6 +346,7 @@ class Visualization(QWidget):
                                    len(self.audio_manager.wav_data) / self.audio_manager.get_samplerate())
 
         elif mode == "Fundamental Pitch Detection":
+            self.show_playhead(True)
             note_positions = [(i, NOTE_NAMES_FULL[i]) for i in range(len(NOTE_NAMES_FULL))]
             self.plot_item.setLabel('left', 'Note')
             self.plot_item.setLabel('bottom', 'Time (s)')
@@ -338,43 +369,75 @@ class Visualization(QWidget):
             self.plot_item.setLabel('left', 'Frequency (Hz)')
             self.plot_item.setLabel('bottom', 'Time (s)')
             self.plot_item.getAxis('left').setStyle(showValues=True)
-            duration = self.spectrogram_width * self.frame_duration
             self.plot_item.showGrid(x=False, y=True)
             self.plot_widget.setMouseEnabled(x=False, y=True)
-
             self.plot_item.getAxis('bottom').setTicks(None)
             self.plot_item.getAxis('left').setTicks(None)
 
             nyquist = self.audio_manager.get_samplerate() / 2 if self.audio_manager else 22050
 
-            log_freqs = np.geomspace(55, nyquist, num=10)  # You can tune range/num
-            log_ticks = [(f, f"{int(f)}") for f in log_freqs if f < nyquist]
+            #log_freqs = np.geomspace(55, nyquist, num=10)
+            #log_ticks = [(f, f"{int(f)}") for f in log_freqs if f < nyquist]
 
-            # Set custom ticks (display only)
-            self.plot_item.getAxis('left').setTicks([log_ticks])
-
-            self.spectrogram_buffer = np.full(
-                (self.spectrogram_height, self.spectrogram_width),
-                self.spectrogram_vmin,
-                dtype=np.float32
-            )
-
-            self.plot_item.setXRange(0, duration)
-            self.plot_item.setYRange(0, nyquist)
-
+            #self.plot_item.getAxis('left').setTicks([log_ticks])
             self.spectrogram_img = pg.ImageItem()
-            self.spectrogram_img.setOpts(axisOrder='row-major')
-            self.plot_item.addItem(self.spectrogram_img)
+            cmap = pg.colormap.get('inferno')  # or use 'plasma', 'viridis', etc.
+            lut = cmap.getLookupTable(0.0, 1.0, 256)
 
-            self.spectrogram_img.setImage(
-                self.spectrogram_buffer,
-                levels=(self.spectrogram_vmin, self.spectrogram_vmax)
-            )
-            self.spectrogram_img.setRect(
-                QtCore.QRectF(0, 0, duration, nyquist)
-            )
+            self.spectrogram_img.setLookupTable(lut)
+            self.spectrogram_img.setOpts(axisOrder='row-major')
+            self.spectrogram_img.setZValue(0)
+
+            self.plot_item.addItem(self.spectrogram_img)
+            if self.app_state.isLive:
+                self.show_playhead(False)
+                # Live mode: initialize scrolling buffer
+                self.spectrogram_buffer = np.full(
+                    (self.spectrogram_height, self.spectrogram_width),
+                    self.spectrogram_vmin,
+                    dtype=np.float32
+                )
+
+                duration = self.spectrogram_width * self.frame_duration
+
+                self.plot_item.setXRange(0, duration)
+                self.plot_item.setYRange(0, nyquist)
+                self.spectrogram_img.setImage(
+                    self.spectrogram_buffer,
+                    levels=(self.spectrogram_vmin, self.spectrogram_vmax)
+                )
+
+                self.spectrogram_img.setRect(QtCore.QRectF(0, 0, duration, nyquist))
+
+            elif self.audio_manager and self.audio_manager.wav_data is not None:
+                self.show_playhead(True)
+                if self.full_spectrogram_cache is None:
+                    spec, freqs, times = self.analysis_engine.compute_full_spectrogram(
+                        self.audio_manager.wav_data,
+                        n_fft=4096,
+                        hop_size=256
+                    )
+
+                    self.full_spectrogram_cache = (spec, freqs, times)
+
+                else:
+                    spec, freqs, times = self.full_spectrogram_cache
+
+                self.spectrogram_buffer = spec
+                self.spectrogram_img.setImage(
+                    self.spectrogram_buffer,
+                    levels=(self.spectrogram_vmin, self.spectrogram_vmax)
+                )
+
+                self.spectrogram_img.setRect(
+                    QtCore.QRectF(0, 0, times[-1], freqs[-1])
+                )
+
+                self.plot_item.setXRange(0, times[-1])
+                self.plot_item.setYRange(0, freqs[-1])
 
         elif mode == "Overtone Profile":
+            self.show_playhead(False)
             self.plot_item.setLabel('left', 'Magnitude (dB)')
             self.plot_item.setLabel('bottom', 'Harmonic Number')
             self.plot_item.showGrid(x=True, y=True)
@@ -404,5 +467,18 @@ class Visualization(QWidget):
             self.plot_item.removeItem(item)
         self.overtone_bars.clear()
         self.overtone_thresholds.clear()
+
+        self.set_mode(self.mode)
+
+    def show_playhead(self, show: bool):
+        if show:
+            self.playhead.line.show()
+        else:
+            self.playhead.line.hide()
+
+    def get_waveform_points(self, signal):
+        x = np.arange(len(signal))
+        return x, signal
+
 
 

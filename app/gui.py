@@ -33,6 +33,10 @@ class AppGUI(QMainWindow):
         self.record_btn = QPushButton("🔴 Record", clicked=self.toggle_record)
         self.live_btn = QPushButton("Live Mode", clicked=self.toggle_live_mode)
 
+        self.oscilloscope_btn = QPushButton("Oscilloscope Mode")
+        self.oscilloscope_btn.setCheckable(True)
+        self.oscilloscope_btn.clicked.connect(self.toggle_oscilloscope)
+
         controls_inner_layout.addWidget(self.rewind_start_btn)
         controls_inner_layout.addWidget(self.rewind_5s_btn)
         controls_inner_layout.addWidget(self.play_pause_btn)
@@ -41,6 +45,7 @@ class AppGUI(QMainWindow):
         controls_inner_layout.addWidget(self.record_btn)
 
         top_bar_layout.addWidget(self.live_btn)
+        top_bar_layout.addWidget(self.oscilloscope_btn)
 
         top_bar_layout.addStretch()
         top_bar_layout.addLayout(controls_inner_layout)
@@ -62,8 +67,14 @@ class AppGUI(QMainWindow):
         self.file_display.setPlaceholderText("No file selected")
         self.file_display.setMinimumWidth(500)
 
+        self.clear_file_btn = QPushButton("❌ Clear", clicked=self.clear_loaded_file)
         bottom_layout.addWidget(self.load_btn)
         bottom_layout.addWidget(self.file_display)
+
+        bottom_layout.addWidget(self.load_btn)
+        bottom_layout.addWidget(self.file_display)
+        bottom_layout.addWidget(self.clear_file_btn)
+
         bottom_layout.addStretch()
 
         # Mode Drop Down Menu
@@ -95,9 +106,11 @@ class AppGUI(QMainWindow):
         if self.player.has_data():
             if self.player.is_playing():
                 self.player.pause()
+                self.app_state.isPlaying = False
                 self.play_pause_btn.setText("▶️ Play")
             else:
                 self.player.play()
+                self.app_state.isPlaying = True
                 self.play_pause_btn.setText("⏸ Pause")
 
     def rewind_to_start(self):
@@ -178,6 +191,12 @@ class AppGUI(QMainWindow):
         else:
             self.harmonic_label.setText(text)
 
+    def toggle_oscilloscope(self):
+        self.app_state.isOscilloscope = self.oscilloscope_btn.isChecked()
+        # Cleanly restore waveform if oscilloscope turned off while in waveform mode
+        if not self.app_state.isOscilloscope and self.visualization.mode == "Waveform" and not self.app_state.isLive:
+            self.visualization.set_mode("Waveform")
+
     def start_live_mode(self):
         def live_callback(audio_chunk):
             result = self.analysis_engine.process_live_frame(audio_chunk)
@@ -207,3 +226,21 @@ class AppGUI(QMainWindow):
                 event.accept()
         else:
             super().keyPressEvent(event)
+
+    def clear_loaded_file(self):
+        # Reset file-related state
+        self.audio_manager.unload_wav()
+        self.player.unload_buffer()
+
+        # Disable playback controls
+        self.play_pause_btn.setEnabled(False)
+        self.play_pause_btn.setText("▶️ Play")
+
+        # Clear visualization and GUI
+        self.visualization.clear_visualization()
+        self.visualization.clear_caches()
+        self.visualization.playhead.update_position(0)
+        self.file_display.clear()
+
+        print("🧹 Cleared loaded WAV file and reset visualizations.")
+
