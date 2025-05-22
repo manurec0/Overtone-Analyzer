@@ -4,10 +4,10 @@ from PySide6.QtCore import Qt
 from app.visualization import Visualization
 
 class AppGUI(QMainWindow):
-    def __init__(self, audio_manager, player, analysis_engine):
+    def __init__(self, audio_manager, player, analysis_engine, app_state):
         super().__init__()
 
-        self.isLive = False
+        self.app_state = app_state
         self.audio_manager = audio_manager
         self.player = player
         self.analysis_engine = analysis_engine
@@ -48,7 +48,7 @@ class AppGUI(QMainWindow):
         main_layout.addLayout(top_bar_layout)
 
         # Visualization
-        self.visualization = Visualization()
+        self.visualization = Visualization(app_state)
         main_layout.addWidget(self.visualization)
         self.visualization.live_status_update.connect(self.update_live_status_label)
 
@@ -157,8 +157,8 @@ class AppGUI(QMainWindow):
             self.record_btn.setText("🔴 Record")
 
     def toggle_live_mode(self):
-        self.isLive = not self.isLive
-        if self.isLive:
+        self.app_state.isLive = not self.app_state.isLive
+        if self.app_state.isLive:
             print("✅ Live Feed mode activated")
             self.start_live_mode()
             self.live_btn.setText("Stop Live Mode")

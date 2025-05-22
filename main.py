@@ -7,6 +7,7 @@ from app.audio_manager import AudioManager
 from app.player import Player
 from app.analysis_engine import AnalysisEngine
 from app.gui import AppGUI
+from app.app_manager import AppState
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
@@ -15,7 +16,8 @@ if __name__ == "__main__":
     player = Player()
     analysis_engine = AnalysisEngine()
 
-    gui = AppGUI(audio_manager, player, analysis_engine)
+    app_state = AppState()
+    gui = AppGUI(audio_manager, player, analysis_engine, app_state)
     gui.show()
 
     QTimer.singleShot(0, gui.run)

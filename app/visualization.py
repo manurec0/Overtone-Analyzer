@@ -47,12 +47,13 @@ class Visualization(QWidget):
     plot_overtone_signal = Signal(object, object)  # (pitch, harmonics_info)
     live_status_update = Signal(str, bool)  # text, visible
 
-    def __init__(self):
+    def __init__(self, app_state):
         super().__init__()
         self.mode = "Waveform"
         self.audio_manager = None
         self.player = None
         self.analysis_engine = None
+        self.app_state = app_state
         self.is_recording = False
 
         self.waveform_cache = None
@@ -277,12 +278,9 @@ class Visualization(QWidget):
     def set_mode(self, mode):
         self.mode = mode
         self.plot_item.clear()
-
         self.plot_item.getAxis('left').setTicks([])  # Clear any prior labels
-        self.plot_item.setLabel('left', '')  # Reset Y axis label
-        self.plot_item.setLabel('bottom', 'Time (s)')  # Always show time by default
-        self.plot_item.setXRange(0, 1)  # Safe default range
-        self.plot_item.setYRange(-1, 1)  # Safe default range
+        self.plot_item.setLabel('left', '')
+        self.plot_item.setLabel('bottom', '')
 
         self.playhead = Playhead(self.plot_item, self.player)
         self.waveform_curve = None
@@ -296,9 +294,19 @@ class Visualization(QWidget):
         if mode == "Waveform":
             self.plot_item.setLabel('left', 'Amplitude')
             self.plot_widget.setYRange(-1, 1)
-            self.plot_item.getAxis('left').setTicks([])
+            self.plot_item.getAxis('left').setTicks([[(i, str(i)) for i in range(-2, 2)]])
             self.plot_widget.setMouseEnabled(x=True, y=False)
             self.plot_item.showGrid(x=True, y=True)
+
+            self.plot_item.getAxis('bottom').setTicks(None)
+
+            if self.app_state.isLive:
+                self.plot_item.setLabel('bottom', 'Samples')
+                #self.plot_item.getAxis('bottom').setTicks(None)
+                self.playhead.visible = False
+            else:
+                self.plot_item.setLabel('bottom', 'Time (s)')
+                #self.plot_item.getAxis('bottom').setTicks(None)
 
             if self.waveform_curve is None:
                 self.waveform_curve = self.plot_item.plot(pen='w')  # Ensure it's created
@@ -310,9 +318,12 @@ class Visualization(QWidget):
         elif mode == "Fundamental Pitch Detection":
             note_positions = [(i, NOTE_NAMES_FULL[i]) for i in range(len(NOTE_NAMES_FULL))]
             self.plot_item.setLabel('left', 'Note')
+            self.plot_item.setLabel('bottom', 'Time (s)')
             self.plot_item.setYRange(0, len(NOTE_NAMES_FULL))
             self.plot_item.setXRange(0, 5)
             self.plot_item.getAxis('left').setTicks([note_positions])
+
+            self.plot_item.getAxis('bottom').setTicks(None)
 
             self.plot_widget.setMouseEnabled(x=True, y=True)
             self.plot_item.showGrid(x=True, y=True)
@@ -325,11 +336,22 @@ class Visualization(QWidget):
 
         elif mode == "Spectrogram":
             self.plot_item.setLabel('left', 'Frequency (Hz)')
-            self.plot_item.setLabel('bottom', 'Time (frames)')
+            self.plot_item.setLabel('bottom', 'Time (s)')
+            self.plot_item.getAxis('left').setStyle(showValues=True)
+            duration = self.spectrogram_width * self.frame_duration
             self.plot_item.showGrid(x=False, y=True)
-            self.plot_widget.setMouseEnabled(x=False, y=False)
+            self.plot_widget.setMouseEnabled(x=False, y=True)
+
+            self.plot_item.getAxis('bottom').setTicks(None)
+            self.plot_item.getAxis('left').setTicks(None)
 
             nyquist = self.audio_manager.get_samplerate() / 2 if self.audio_manager else 22050
+
+            log_freqs = np.geomspace(55, nyquist, num=10)  # You can tune range/num
+            log_ticks = [(f, f"{int(f)}") for f in log_freqs if f < nyquist]
+
+            # Set custom ticks (display only)
+            self.plot_item.getAxis('left').setTicks([log_ticks])
 
             self.spectrogram_buffer = np.full(
                 (self.spectrogram_height, self.spectrogram_width),
@@ -337,7 +359,7 @@ class Visualization(QWidget):
                 dtype=np.float32
             )
 
-            self.plot_item.setXRange(0, self.spectrogram_width)
+            self.plot_item.setXRange(0, duration)
             self.plot_item.setYRange(0, nyquist)
 
             self.spectrogram_img = pg.ImageItem()
@@ -349,8 +371,9 @@ class Visualization(QWidget):
                 levels=(self.spectrogram_vmin, self.spectrogram_vmax)
             )
             self.spectrogram_img.setRect(
-                QtCore.QRectF(0, 0, self.spectrogram_width, nyquist)
+                QtCore.QRectF(0, 0, duration, nyquist)
             )
+
         elif mode == "Overtone Profile":
             self.plot_item.setLabel('left', 'Magnitude (dB)')
             self.plot_item.setLabel('bottom', 'Harmonic Number')
