@@ -4,7 +4,7 @@ from PySide6.QtWidgets import QWidget, QVBoxLayout
 from PySide6.QtCore import QTimer, Qt, Signal
 from PySide6 import QtCore
 
-from utils.helpers import NOTE_NAMES_FULL, freq_to_note_index, freq_to_note_name
+from utils.helpers import NOTE_NAMES_FULL, freq_to_note_index, freq_to_note_name, note_index_to_freq
 
 
 class Playhead:
@@ -451,6 +451,151 @@ class Visualization(QWidget):
             self.plot_item.getAxis('left').setTicks([yticks])
             self.plot_item.getAxis('bottom').setTicks([[(i, f"H{i}") for i in range(1, 17)]])
 
+
+        elif mode == "Overtone Analyzer":
+
+            self.show_playhead(True)
+
+            note_positions = [(i, NOTE_NAMES_FULL[i]) for i in range(len(NOTE_NAMES_FULL))]
+
+            self.plot_item.setLabel('left', 'Note')
+
+            self.plot_item.setLabel('bottom', 'Time (s)')
+
+            self.plot_item.setYRange(0, len(NOTE_NAMES_FULL))
+
+            self.plot_item.getAxis('left').setTicks([note_positions])
+
+            self.plot_item.getAxis('bottom').setTicks(None)
+
+            self.plot_item.showGrid(x=True, y=True)
+
+            self.plot_widget.setMouseEnabled(x=True, y=True)
+
+            self.spectrogram_img = pg.ImageItem()
+
+            cmap = pg.colormap.get('inferno')
+
+            self.spectrogram_img.setLookupTable(cmap.getLookupTable(0.0, 1.0, 256))
+
+            self.spectrogram_img.setOpts(axisOrder='row-major')
+
+            self.spectrogram_img.setZValue(0)
+
+            self.plot_item.addItem(self.spectrogram_img)
+
+            self.pitch_scatter = pg.ScatterPlotItem(size=10, brush='cyan')
+
+            self.harmonic_scatter = pg.ScatterPlotItem(size=10, brush='orange')
+
+            self.plot_item.addItem(self.pitch_scatter)
+
+            self.plot_item.addItem(self.harmonic_scatter)
+
+            if self.app_state.isLive:
+
+                # Live mode — defer logic for now
+
+                self.spectrogram_buffer = np.full((len(NOTE_NAMES_FULL), self.spectrogram_width),
+
+                                                  self.spectrogram_vmin, dtype=np.float32)
+
+                duration = self.spectrogram_width * self.frame_duration
+
+                self.plot_item.setXRange(0, duration)
+
+                self.plot_item.setYRange(0, len(NOTE_NAMES_FULL))
+
+                self.spectrogram_img.setImage(self.spectrogram_buffer,
+
+                                              levels=(self.spectrogram_vmin, self.spectrogram_vmax))
+
+                self.spectrogram_img.setRect(QtCore.QRectF(0, 0, duration, len(NOTE_NAMES_FULL)))
+
+
+            elif self.audio_manager and self.audio_manager.wav_data is not None:
+
+                if self.full_spectrogram_cache is None:
+
+                    spec, freqs, times = self.analysis_engine.compute_full_spectrogram(
+
+                        self.audio_manager.wav_data,
+
+                        n_fft=4096,
+
+                        hop_size=256
+
+                    )
+
+                    self.full_spectrogram_cache = (spec, freqs, times)
+
+                else:
+
+                    spec, freqs, times = self.full_spectrogram_cache
+
+                # Build new spectrogram buffer in note-index space
+
+                aligned_spec = np.full((len(NOTE_NAMES_FULL), spec.shape[1]), self.spectrogram_vmin, dtype=np.float32)
+
+                for i, freq in enumerate(freqs):
+
+                    note_idx = freq_to_note_index(freq)
+
+                    if note_idx is not None and 0 <= note_idx < len(NOTE_NAMES_FULL):
+                        aligned_spec[note_idx, :] = np.maximum(aligned_spec[note_idx, :], spec[i, :])
+
+                self.spectrogram_buffer = aligned_spec
+
+                self.spectrogram_img.setImage(aligned_spec,
+
+                                              levels=(self.spectrogram_vmin, self.spectrogram_vmax))
+
+                self.spectrogram_img.setRect(QtCore.QRectF(0, 0, times[-1], len(NOTE_NAMES_FULL)))
+
+                self.plot_item.setXRange(0, times[-1])
+
+                self.plot_item.setYRange(0, len(NOTE_NAMES_FULL))
+
+                # Fundamental pitch scatter
+
+                times_f0, note_indices = self.analysis_engine.process_pitch_detection_full(self.audio_manager.wav_data)
+
+                self.pitch_scatter.setData(times_f0, note_indices)
+
+                # Harmonic scatter
+
+                harmonic_times = []
+
+                harmonic_indices = []
+
+                for t, note_idx in zip(times_f0, note_indices):
+
+                    pitch = note_index_to_freq(note_idx)
+
+                    frame_start = int(t * self.audio_manager.get_samplerate())
+
+                    frame = self.audio_manager.wav_data[frame_start:frame_start + self.analysis_engine.frame_length]
+
+                    if len(frame) < self.analysis_engine.frame_length:
+                        continue
+
+                    result = self.analysis_engine.process_live_frame(frame)
+
+                    h = result.get("active_harmonic")
+
+                    if h and result["pitch"]:
+
+                        harmonic_freq = h * result["pitch"]
+
+                        harmonic_idx = freq_to_note_index(harmonic_freq)
+
+                        if harmonic_idx is not None:
+                            harmonic_times.append(t)
+
+                            harmonic_indices.append(harmonic_idx)
+
+                self.harmonic_scatter.setData(harmonic_times, harmonic_indices)
+
     def clear_caches(self):
         self.waveform_cache = None
         self.pitch_detection_cache = None
@@ -470,6 +615,49 @@ class Visualization(QWidget):
 
         self.set_mode(self.mode)
 
+    def process_overtone_analyzer_full(self, data):
+        print("🔍 Processing overtone analyzer view (file mode)...")
+
+        sr = self.audio_manager.get_samplerate()
+        frame_size = self.analysis_engine.frame_length
+        hop_size = frame_size  # could be smaller for more resolution
+
+        fund_times = []
+        fund_indices = []
+        harm_times = []
+        harm_indices = []
+
+        for i in range(0, len(data) - frame_size, hop_size):
+            current_time = i / sr
+            signal = data[i:i + frame_size]
+            if len(signal) != frame_size:
+                continue
+
+            result = self.analysis_engine.process_live_frame(signal)
+
+            pitch = result.get("pitch")
+            if pitch:
+                note_idx = freq_to_note_index(pitch)
+                if note_idx is not None:
+                    fund_times.append(current_time)
+                    fund_indices.append(note_idx)
+
+                h = result.get("active_harmonic")
+                if h and h > 0:
+                    harmonic_freq = pitch * h
+                    harmonic_idx = freq_to_note_index(harmonic_freq)
+                    if harmonic_idx is not None:
+                        harm_times.append(current_time)
+                        harm_indices.append(harmonic_idx)
+
+        self.pitch_scatter.setData(fund_times, fund_indices)
+        self.harmonic_scatter.setData(harm_times, harm_indices)
+
+        if len(fund_times) > 0:
+            self.plot_widget.setXRange(0, fund_times[-1], padding=0)
+
+        print(f"✅ Plotted {len(fund_times)} fundamentals and {len(harm_times)} harmonics")
+
     def show_playhead(self, show: bool):
         if show:
             self.playhead.line.show()
@@ -479,6 +667,3 @@ class Visualization(QWidget):
     def get_waveform_points(self, signal):
         x = np.arange(len(signal))
         return x, signal
-
-
-

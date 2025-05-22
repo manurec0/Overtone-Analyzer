@@ -79,7 +79,12 @@ class AppGUI(QMainWindow):
 
         # Mode Drop Down Menu
         self.mode_selector = QComboBox()
-        self.mode_selector.addItems(["Waveform", "Fundamental Pitch Detection", "Spectrogram", "Overtone Profile"])
+        self.mode_selector.addItems([
+            "Waveform",
+            "Fundamental Pitch Detection",
+            "Spectrogram",
+            "Overtone Profile",
+            "Overtone Analyzer"])
         self.mode_selector.currentTextChanged.connect(self.change_mode)
         bottom_layout.addWidget(self.mode_selector)
 
