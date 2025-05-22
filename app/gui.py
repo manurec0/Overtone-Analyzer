@@ -1,5 +1,5 @@
 from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QFileDialog, QComboBox,
-                               QLineEdit, QLabel)
+                               QLineEdit, QLabel, QCheckBox)
 from PySide6.QtCore import Qt
 from app.visualization import Visualization
 
@@ -33,8 +33,8 @@ class AppGUI(QMainWindow):
         self.record_btn = QPushButton("🔴 Record", clicked=self.toggle_record)
         self.live_btn = QPushButton("Live Mode", clicked=self.toggle_live_mode)
 
-        self.oscilloscope_btn = QPushButton("Oscilloscope Mode")
-        self.oscilloscope_btn.setCheckable(True)
+        self.oscilloscope_btn = QCheckBox("Oscilloscope Mode")
+        self.oscilloscope_btn.setEnabled(False)
         self.oscilloscope_btn.clicked.connect(self.toggle_oscilloscope)
 
         controls_inner_layout.addWidget(self.rewind_start_btn)
@@ -101,6 +101,7 @@ class AppGUI(QMainWindow):
             self.file_display.setText(filepath)
             self.play_pause_btn.setEnabled(True)
             self.play_pause_btn.setText("▶️ Play")
+            self.oscilloscope_btn.setEnabled(True)
 
     def toggle_play(self):
         if self.player.has_data():
@@ -241,6 +242,9 @@ class AppGUI(QMainWindow):
         self.visualization.clear_caches()
         self.visualization.playhead.update_position(0)
         self.file_display.clear()
+
+        self.oscilloscope_btn.setChecked(False)  # Reset checkbox
+        self.oscilloscope_btn.setEnabled(False)  # Disable checkbox
 
         print("🧹 Cleared loaded WAV file and reset visualizations.")
 
