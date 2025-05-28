@@ -1,7 +1,8 @@
 from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QFileDialog, QComboBox,
-                               QLineEdit, QLabel, QCheckBox)
+                               QLineEdit, QLabel, QCheckBox, QDialog, QComboBox)
 from PySide6.QtCore import Qt
 from app.visualization import Visualization
+
 
 class AppGUI(QMainWindow):
     def __init__(self, audio_manager, player, analysis_engine, app_state):
@@ -31,6 +32,7 @@ class AppGUI(QMainWindow):
         self.forward_5s_btn = QPushButton("⏩ 5s", clicked=self.forward_5s)
         self.forward_end_btn = QPushButton("⏭", clicked=self.forward_to_end)
         self.record_btn = QPushButton("🔴 Record", clicked=self.toggle_record)
+        self.settings_btn = QPushButton("⚙️ Settings", clicked=self.open_audio_settings)
         self.live_btn = QPushButton("Live Mode", clicked=self.toggle_live_mode)
 
         self.oscilloscope_btn = QCheckBox("Oscilloscope Mode")
@@ -44,6 +46,7 @@ class AppGUI(QMainWindow):
         controls_inner_layout.addWidget(self.forward_end_btn)
         controls_inner_layout.addWidget(self.record_btn)
 
+        top_bar_layout.addWidget(self.settings_btn)
         top_bar_layout.addWidget(self.live_btn)
         top_bar_layout.addWidget(self.oscilloscope_btn)
 
@@ -252,4 +255,38 @@ class AppGUI(QMainWindow):
         self.oscilloscope_btn.setEnabled(False)  # Disable checkbox
 
         print("🧹 Cleared loaded WAV file and reset visualizations.")
+
+    def open_audio_settings(self):
+        dialog = AudioSettingsDialog(self.audio_manager, self)
+        dialog.exec()
+
+
+class AudioSettingsDialog(QDialog):
+    def __init__(self, audio_manager, parent=None):
+        super().__init__(parent)
+        self.audio_manager = audio_manager
+        self.setWindowTitle("Audio Input Settings")
+        self.setMinimumWidth(400)
+
+        layout = QVBoxLayout()
+        self.device_selector = QComboBox()
+        self.devices = self.audio_manager.list_input_devices()
+
+        for i, name in self.devices:
+            self.device_selector.addItem(f"{i}: {name}", i)
+
+        layout.addWidget(QLabel("Select Microphone Input:"))
+        layout.addWidget(self.device_selector)
+
+        self.confirm_btn = QPushButton("Apply")
+        self.confirm_btn.clicked.connect(self.apply_selection)
+        layout.addWidget(self.confirm_btn)
+
+        self.setLayout(layout)
+
+    def apply_selection(self):
+        selected_index = self.device_selector.currentData()
+        print(f"🔧 Selected device index: {selected_index}")
+        self.audio_manager.set_input_device(selected_index)
+        self.accept()
 

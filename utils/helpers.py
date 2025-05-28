@@ -27,3 +27,7 @@ def note_index_to_freq(index):
     if 0 <= index < len(NOTE_NAMES_FULL):
         return 440.0 * 2 ** ((index - NOTE_NAMES_FULL.index("A4")) / 12)
     return None
+
+
+
+

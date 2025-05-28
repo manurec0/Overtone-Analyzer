@@ -2,16 +2,19 @@ import numpy as np
 import soundfile as sf
 import pyaudio
 import threading
+import os
 
 
 class AudioManager:
     def __init__(self):
         self.source = None
         self.wav_data = None
-        self.samplerate = 44100  # Fixed default samplerate
+        self.samplerate = 44100  # Default samplerate
         self.chunk_size = 4096
         self.recording_buffer = np.zeros(0, dtype=np.float32)
         self.recording_lock = threading.Lock()
+        self.input_device_index = None
+        self.wav_path = None  # Updated: holds full path to WAV file
 
         self._pyaudio_instance = pyaudio.PyAudio()
         self._recording_stream = None
@@ -26,13 +29,15 @@ class AudioManager:
         self.wav_data = wav_data.astype(np.float32)
         self.samplerate = samplerate
         self.source = "file"
-        print(f"Loaded WAV file: {filepath} | Duration: {len(self.wav_data) / self.samplerate:.2f}s | SampleRate: {samplerate}Hz")
+        self.wav_path = os.path.abspath(filepath)  # Save full path
+        print(f"Loaded WAV file: {self.wav_path} | Duration: {len(self.wav_data) / self.samplerate:.2f}s | SampleRate: {samplerate}Hz")
         return len(self.wav_data) / self.samplerate
 
     def unload_wav(self):
         self.wav_data = None
         self.samplerate = None
         self.source = None
+        self.wav_path = None  # Clear path
         print("📤 WAV file unloaded.")
 
     def start_mic(self):
@@ -53,6 +58,7 @@ class AudioManager:
             channels=1,
             rate=self.samplerate,
             input=True,
+            input_device_index=self.input_device_index if self.input_device_index is not None else None,
             frames_per_buffer=1024,
             stream_callback=callback
         )
@@ -75,6 +81,9 @@ class AudioManager:
     def get_samplerate(self):
         return self.samplerate
 
+    def get_filepath(self):
+        return self.wav_path  # Correctly return stored path
+
     def start_live_mode(self, callback):
         self.stop_current_stream()
         self.live_callback = callback
@@ -85,9 +94,11 @@ class AudioManager:
             channels=1,
             rate=self.samplerate,
             input=True,
+            input_device_index=self.input_device_index if self.input_device_index is not None else None,
             frames_per_buffer=self.chunk_size,
             stream_callback=self._live_stream_callback
         )
+
         self._live_stream.start_stream()
         print("🎧 Live Mode stream started")
 
@@ -104,3 +115,18 @@ class AudioManager:
             self._live_stream = None
             print("🛑 Live stream stopped")
         self.live_callback = None
+
+    def set_input_device(self, device_index):
+        self.input_device_index = device_index
+        print(f"🎚️ Input device set to index {device_index}")
+
+    @staticmethod
+    def list_input_devices():
+        pa = pyaudio.PyAudio()
+        devices = []
+        for i in range(pa.get_device_count()):
+            dev = pa.get_device_info_by_index(i)
+            if dev["maxInputChannels"] > 0:
+                devices.append((i, dev["name"]))
+        pa.terminate()
+        return devices

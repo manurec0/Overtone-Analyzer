@@ -1,6 +1,10 @@
 import numpy as np
 import pysptk
 import utils.helpers as helpers
+import pandas as pd
+import matplotlib
+matplotlib.use('TkAgg')
+import matplotlib.pyplot as plt
 
 
 class AnalysisEngine:
@@ -174,4 +178,127 @@ class AnalysisEngine:
 
         print(f"✅ Computed spectrogram: shape = {spectrogram.shape}")
         return spectrogram, freqs, times
+
+    @staticmethod
+    def load_ground_truth(f0_path, harmonics_path):
+        """Load Sonic Visualiser CSVs and compute end times for plotting."""
+        f0_df = pd.read_csv(f0_path, header=None)
+        harmonics_df = pd.read_csv(harmonics_path, header=None)
+
+        # Assign expected column names
+        f0_df.columns = ["time", "frequency", "duration", "confidence", "label"]
+        harmonics_df.columns = ["time", "frequency", "duration", "confidence", "label"]
+
+        # Convert frequency to float (handle commas)
+        f0_df["frequency"] = f0_df["frequency"].astype(str).str.replace(",", ".").astype(float)
+        harmonics_df["frequency"] = harmonics_df["frequency"].astype(str).str.replace(",", ".").astype(float)
+
+        # Calculate end times for horizontal segments
+        f0_df["end_time"] = f0_df["time"] + f0_df["duration"]
+        harmonics_df["end_time"] = harmonics_df["time"] + harmonics_df["duration"]
+
+        return f0_df, harmonics_df
+
+    def plot_ground_truth(f0_df, harmonics_df):
+        """Plot ground truth fundamental and harmonic annotations with duration."""
+        plt.figure(figsize=(14, 6))
+
+        # Plot F0 segments
+        for _, row in f0_df.iterrows():
+            plt.hlines(row["frequency"], row["time"], row["end_time"],
+                       colors='cyan', linewidth=3, label='Fundamental (GT)')
+
+        # Plot harmonic segments
+        for _, row in harmonics_df.iterrows():
+            plt.hlines(row["frequency"], row["time"], row["end_time"],
+                       colors='green', linewidth=2, label='Harmonic (GT)')
+
+        # Deduplicate legend
+        handles, labels = plt.gca().get_legend_handles_labels()
+        by_label = dict(zip(labels, handles))
+
+        plt.xlabel("Time (s)")
+        plt.ylabel("Frequency (Hz)")
+        plt.title("Ground Truth: Fundamental and Harmonics with Duration")
+        plt.legend(by_label.values(), by_label.keys())
+        plt.grid(True)
+        plt.tight_layout()
+        plt.show()
+
+    @staticmethod
+    def format_overtone_results(fund_times, fund_indices, harm_times, harm_indices, frame_duration=4096 / 44100):
+        results = []
+
+        for t, idx in zip(fund_times, fund_indices):
+            freq = helpers.note_index_to_freq(idx)
+            results.append({
+                "type": "fundamental",
+                "start_time": t,
+                "end_time": t + frame_duration,
+                "frequency": freq
+            })
+
+        for t, idx in zip(harm_times, harm_indices):
+            freq = helpers.note_index_to_freq(idx)
+            results.append({
+                "type": "harmonic",
+                "start_time": t,
+                "end_time": t + frame_duration,
+                "frequency": freq
+            })
+
+        return results
+
+    def evaluate_results(self, ground_truth_df, detection_results,
+                         freq_tolerance=20.0, min_time_overlap=0.3):
+        from collections import defaultdict
+
+        gt_matched = set()
+        result_matched = set()
+
+        true_positives = 0
+        false_positives = 0
+        false_negatives = 0
+        freq_errors = []
+
+        gt_segments = ground_truth_df.to_dict("records")
+
+        for i, det in enumerate(detection_results):
+            matched = False
+            for j, gt in enumerate(gt_segments):
+                if gt["label"].lower().startswith(det["type"]):
+                    # Check frequency match
+                    if abs(gt["frequency"] - det["frequency"]) <= freq_tolerance:
+                        # Check time overlap
+                        start = max(gt["time"], det["start_time"])
+                        end = min(gt["end_time"], det["end_time"])
+                        overlap = max(0.0, end - start)
+                        gt_duration = gt["end_time"] - gt["time"]
+                        det_duration = det["end_time"] - det["start_time"]
+                        if (overlap / gt_duration >= min_time_overlap or
+                                overlap / det_duration >= min_time_overlap):
+                            true_positives += 1
+                            freq_errors.append(abs(gt["frequency"] - det["frequency"]))
+                            gt_matched.add(j)
+                            result_matched.add(i)
+                            matched = True
+                            break
+            if not matched:
+                false_positives += 1
+
+        false_negatives = len(gt_segments) - len(gt_matched)
+
+        precision = true_positives / (true_positives + false_positives + 1e-6)
+        recall = true_positives / (true_positives + false_negatives + 1e-6)
+        f1 = 2 * precision * recall / (precision + recall + 1e-6)
+
+        return {
+            "true_positives": true_positives,
+            "false_positives": false_positives,
+            "false_negatives": false_negatives,
+            "precision": precision,
+            "recall": recall,
+            "f1_score": f1,
+            "avg_freq_error": np.mean(freq_errors) if freq_errors else None
+        }
 
