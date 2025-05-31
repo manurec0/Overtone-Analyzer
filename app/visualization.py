@@ -427,12 +427,9 @@ class Visualization(QWidget):
             self.plot_item.getAxis('bottom').setTicks(None)
             self.plot_item.getAxis('left').setTicks(None)
 
-            nyquist = self.audio_manager.get_samplerate() / 2 if self.audio_manager else 22050
+            samplerate = self.audio_manager.get_samplerate() if self.audio_manager and self.audio_manager.get_samplerate() else 44100
+            nyquist = samplerate / 2
 
-            #log_freqs = np.geomspace(55, nyquist, num=10)
-            #log_ticks = [(f, f"{int(f)}") for f in log_freqs if f < nyquist]
-
-            #self.plot_item.getAxis('left').setTicks([log_ticks])
             self.spectrogram_img = pg.ImageItem()
             cmap = pg.colormap.get('inferno')  # or use 'plasma', 'viridis', etc.
             lut = cmap.getLookupTable(0.0, 1.0, 256)
@@ -570,6 +567,7 @@ class Visualization(QWidget):
     def clear_caches(self):
         self.waveform_cache = None
         self.pitch_detection_cache = None
+        self.full_spectrogram_cache = None
 
     def clear_visualization(self):
         if self.waveform_curve:

@@ -237,6 +237,8 @@ class AppGUI(QMainWindow):
             super().keyPressEvent(event)
 
     def clear_loaded_file(self):
+        self.player.stop()
+
         # Reset file-related state
         self.audio_manager.unload_wav()
         self.player.unload_buffer()

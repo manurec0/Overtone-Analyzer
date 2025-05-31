@@ -2,10 +2,11 @@ import vlc
 import numpy as np
 import threading
 import pyaudio
+import time
+
 
 class Player:
     def __init__(self):
-        # VLC
         self.instance = vlc.Instance()
         self.media_player = self.instance.media_player_new()
         self.loaded = False
@@ -13,7 +14,6 @@ class Player:
         self.file_path = None
         self.needs_reload = False
 
-        # Buffer playback (recorded data)
         self.buffer_data = None
         self.buffer_loaded = False
         self.buffer_is_playing = False
@@ -22,8 +22,9 @@ class Player:
         self.buffer_thread = None
         self.buffer_stop_flag = threading.Event()
         self.buffer_pause_event = threading.Event()
-        self.buffer_pause_event.set()  # Initially not paused
+        self.buffer_pause_event.set()
         self.buffer_samplerate = 44100
+        self.stop_requested = False  # 🔁 new flag
 
         self.p = pyaudio.PyAudio()
 
@@ -40,10 +41,17 @@ class Player:
             self.load_file(self.file_path)
 
     def load_file(self, file_path):
-        self.stop()
-        self.file_path = file_path
+        self.stop()  # Will force full VLC reset now
+
+        self.instance = vlc.Instance()
+        self.media_player = self.instance.media_player_new()
         media = self.instance.media_new(file_path)
         self.media_player.set_media(media)
+
+        events = self.media_player.event_manager()
+        events.event_attach(vlc.EventType.MediaPlayerEndReached, self.on_end_reached)
+
+        self.file_path = file_path
         self.loaded = True
         self.reached_end = False
         self.needs_reload = False
@@ -70,6 +78,10 @@ class Player:
         self.buffer_pos = 0
 
     def _buffer_playback_loop(self):
+        if self.stop_requested or self.buffer_data is None:
+            print("⚠️ Playback aborted before starting")
+            return
+
         stream = self.p.open(
             format=pyaudio.paFloat32,
             channels=1,
@@ -79,12 +91,24 @@ class Player:
         )
 
         self.buffer_is_playing = True
-        self.buffer_stop_flag.clear()
-        self.buffer_pause_event.set()
+        self.stop_requested = False
 
-        while self.buffer_pos < len(self.buffer_data) and not self.buffer_stop_flag.is_set():
+        while True:
             self.buffer_pause_event.wait()
-            end_pos = min(self.buffer_pos + 1024, len(self.buffer_data))
+
+            # Safeguard in case buffer_data gets cleared mid-playback
+            if self.buffer_data is None:
+                print("⚠️ Buffer data was cleared mid-playback. Exiting cleanly.")
+                break
+
+            if self.buffer_stop_flag.is_set() or self.stop_requested:
+                break
+
+            chunk_size = 1024
+            if self.buffer_pos >= len(self.buffer_data):
+                break
+
+            end_pos = min(self.buffer_pos + chunk_size, len(self.buffer_data))
             chunk = self.buffer_data[self.buffer_pos:end_pos]
             stream.write(chunk.astype(np.float32).tobytes())
             self.buffer_pos = end_pos
@@ -101,13 +125,21 @@ class Player:
                 print("▶️ Resuming buffer playback")
                 self.buffer_is_paused = False
                 self.buffer_pause_event.set()
-            elif not self.buffer_is_playing:
+            elif not self.buffer_is_playing or not (self.buffer_thread and self.buffer_thread.is_alive()):
+                if self.buffer_thread and self.buffer_thread.is_alive():
+                    print("⚠️ Previous buffer thread still running. Forcing stop...")
+                    self.stop()
+
+                if self.buffer_pos >= len(self.buffer_data):  # ✅ MUST be before starting
+                    print("↩️ Rewinding buffer before playback")
+                    self.buffer_pos = 0
+
                 print("▶️ Starting buffer playback")
+                self.stop_requested = False
+                self.buffer_stop_flag.clear()
+                self.buffer_pause_event.set()
                 self.buffer_thread = threading.Thread(target=self._buffer_playback_loop)
                 self.buffer_thread.start()
-        elif self.loaded:
-            self.media_player.play()
-            self.reached_end = False
 
     def pause(self):
         if self.buffer_loaded:
@@ -121,13 +153,22 @@ class Player:
     def stop(self):
         if self.buffer_loaded:
             self.buffer_stop_flag.set()
+            self.stop_requested = True
+
             if self.buffer_thread and self.buffer_thread.is_alive():
-                self.buffer_thread.join()
+                print("🔁 Joining buffer thread...")
+                self.buffer_thread.join(timeout=2.0)
+                if self.buffer_thread.is_alive():
+                    print("⚠️ Buffer thread still alive after join")
+                else:
+                    print("🔁 Buffer thread successfully joined")
+
+            self.buffer_thread = None  # ✅ Fully clear
+            self.buffer_stop_flag.clear()  # ✅ Reset for next run
+            self.buffer_pause_event.set()  # ✅ Unpause to allow exit
             self.buffer_pos = 0
             self.buffer_is_playing = False
             self.buffer_is_paused = False
-        elif self.loaded:
-            self.media_player.stop()
 
     def get_time(self):
         if self.buffer_loaded:
@@ -160,3 +201,8 @@ class Player:
 
     def has_data(self):
         return self.buffer_loaded or self.loaded
+
+    @property
+    def time(self):
+        return self.get_time()
+
