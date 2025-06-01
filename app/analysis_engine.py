@@ -117,7 +117,6 @@ class AnalysisEngine:
         magnitude = 20 * np.log10(np.abs(fft_result) + 1e-6)
         magnitude = self.smooth_spectrum(magnitude)
 
-
         harmonics_info = []
         active_harmonic = None
         harmonic_info_str = None

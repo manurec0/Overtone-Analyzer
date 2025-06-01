@@ -124,22 +124,43 @@ class AppGUI(QMainWindow):
 
     def rewind_to_start(self):
         if self.player.has_data():
+            was_playing = self.player.is_playing()
+            if was_playing:
+                self.player.pause()
+
             self.player.set_time(0)
             self.visualization.playhead.update_position(0)
 
+            if was_playing:
+                self.player.play()
+
     def rewind_5s(self):
         if self.player.has_data():
+            was_playing = self.player.is_playing()
+            if was_playing:
+                self.player.pause()
+
             current = self.player.get_time()
-            new_time = max(0, (current - 5))
+            new_time = max(0, current - 5)
             self.player.set_time(new_time)
             self.visualization.playhead.update_position(new_time)
 
+            if was_playing:
+                self.player.play()
+
     def forward_5s(self):
         if self.player.has_data():
+            was_playing = self.player.is_playing()
+            if was_playing:
+                self.player.pause()
+
             current = self.player.get_time()
-            new_time = min(self.player.get_duration(), (current + 5))
+            new_time = min(self.player.get_duration(), current + 5)
             self.player.set_time(new_time)
             self.visualization.playhead.update_position(new_time)
+
+            if was_playing:
+                self.player.play()
 
     def forward_to_end(self):
         if self.player.has_data():
@@ -202,8 +223,13 @@ class AppGUI(QMainWindow):
 
     def toggle_oscilloscope(self):
         self.app_state.isOscilloscope = self.oscilloscope_btn.isChecked()
-        # Cleanly restore waveform if oscilloscope turned off while in waveform mode
-        if not self.app_state.isOscilloscope and self.visualization.mode == "Waveform" and not self.app_state.isLive:
+
+        # Update X-axis label based on oscilloscope state
+        if self.app_state.isOscilloscope and self.visualization.mode == "Waveform" and not self.app_state.isLive:
+            self.visualization.plot_item.setLabel('bottom', 'Samples')
+        elif not self.app_state.isOscilloscope and self.visualization.mode == "Waveform" and not self.app_state.isLive:
+            self.visualization.plot_item.setLabel('bottom', 'Time (s)')
+            # Also restore waveform display if toggled off
             self.visualization.set_mode("Waveform")
 
     def start_live_mode(self):
@@ -219,7 +245,26 @@ class AppGUI(QMainWindow):
         self.visualization.clear_visualization()  # Optional
 
     def change_mode(self, mode):
+        # Safety pause to avoid lag during heavy visualizations
+        if self.player.is_playing():
+            print("⏸ Auto-pausing due to mode change")
+            self.player.pause()
+            self.app_state.isPlaying = False
+            self.play_pause_btn.setText("▶️ Play")
+
         self.visualization.set_mode(mode)
+
+        if self.player.has_data():
+            current_time = self.player.get_time()
+            self.visualization.playhead.update_position(current_time)
+
+        # Oscilloscope toggle only enabled in Waveform mode and when a file is loaded
+        if mode == "Waveform" and self.player.buffer_loaded:
+            self.oscilloscope_btn.setEnabled(True)
+        else:
+            self.oscilloscope_btn.setChecked(False)
+            self.oscilloscope_btn.setEnabled(False)
+            self.app_state.isOscilloscope = False
 
     def run(self):
         self.visualization.start_loop(self.audio_manager, self.player, self.analysis_engine)

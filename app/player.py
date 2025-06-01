@@ -28,6 +28,8 @@ class Player:
 
         self.p = pyaudio.PyAudio()
 
+        self.buffer_lock = threading.Lock()
+
         events = self.media_player.event_manager()
         events.event_attach(vlc.EventType.MediaPlayerEndReached, self.on_end_reached)
 
@@ -96,7 +98,6 @@ class Player:
         while True:
             self.buffer_pause_event.wait()
 
-            # Safeguard in case buffer_data gets cleared mid-playback
             if self.buffer_data is None:
                 print("⚠️ Buffer data was cleared mid-playback. Exiting cleanly.")
                 break
@@ -104,14 +105,15 @@ class Player:
             if self.buffer_stop_flag.is_set() or self.stop_requested:
                 break
 
-            chunk_size = 1024
-            if self.buffer_pos >= len(self.buffer_data):
-                break
+            with self.buffer_lock:
+                current_pos = self.buffer_pos
+                if current_pos >= len(self.buffer_data):
+                    break
+                end_pos = min(current_pos + 1024, len(self.buffer_data))
+                chunk = self.buffer_data[current_pos:end_pos]
+                self.buffer_pos = end_pos  # advance position only after writing
 
-            end_pos = min(self.buffer_pos + chunk_size, len(self.buffer_data))
-            chunk = self.buffer_data[self.buffer_pos:end_pos]
             stream.write(chunk.astype(np.float32).tobytes())
-            self.buffer_pos = end_pos
 
         stream.stop_stream()
         stream.close()
@@ -186,8 +188,10 @@ class Player:
 
     def set_time(self, time_s):
         if self.buffer_loaded:
-            self.buffer_pos = int(time_s * self.buffer_samplerate)
-            self.buffer_pos = max(0, min(self.buffer_pos, len(self.buffer_data)))
+            with self.buffer_lock:
+                self.buffer_pos = int(time_s * self.buffer_samplerate)
+                self.buffer_pos = max(0, min(self.buffer_pos, len(self.buffer_data)))
+                print(f"⏪ Set buffer_pos to {self.buffer_pos} ({time_s:.2f}s)")
         elif self.loaded:
             self.media_player.set_time(int(time_s * 1000.0))
             self.reached_end = False

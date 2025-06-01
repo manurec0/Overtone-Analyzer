@@ -14,6 +14,7 @@ class Playhead:
         self.player = player
         self.line = pg.InfiniteLine(angle=90, pen=pg.mkPen('white', width=2), movable=True)
         self.line.setCursor(Qt.SizeHorCursor)
+        self.line.setZValue(1000)
         plot_item.addItem(self.line)
         self.visible = True
         self._default_pen = pg.mkPen('white', width=2)
@@ -27,8 +28,18 @@ class Playhead:
             self.line.setPos(current_time)
 
     def on_drag_finished(self):
-        if self.player and self.player.loaded:
-            new_time = self.line.value()
+        if not self.player:
+            return
+
+        new_time = self.line.value()
+
+        if self.player.buffer_loaded:
+            duration = self.player.get_duration()
+            new_time = max(0, min(new_time, duration))
+            self.player.set_time(new_time)
+            print(f"⏪ Set buffer_pos to {self.player.buffer_pos} ({new_time:.2f}s)")
+
+        elif self.player.loaded:
             duration = self.player.media_player.get_length() / 1000.0
             new_time = max(0, min(new_time, duration))
             self.player.set_time(new_time * 1000.0)
@@ -176,8 +187,8 @@ class Visualization(QWidget):
         elif self.mode == "Overtone Analyzer":
             freqs = result.get("freqs")
             magnitude = result.get("magnitude")
-            if freqs is not None and magnitude is not None:
-                self.plot_spectrogram_frame(magnitude, freqs)
+            # if freqs is not None and magnitude is not None:
+                # self.plot_spectrogram_frame(magnitude, freqs)
 
             # Fundamental pitch
             if pitch:
@@ -382,14 +393,12 @@ class Visualization(QWidget):
 
             self.plot_item.getAxis('bottom').setTicks(None)
 
-            if self.app_state.isLive:
+            if self.app_state.isLive or self.app_state.isOscilloscope:
                 self.plot_item.setLabel('bottom', 'Samples')
-                #self.plot_item.getAxis('bottom').setTicks(None)
-                self.show_playhead(False)
+                self.show_playhead(False if self.app_state.isLive else True)
             else:
-                self.show_playhead(True)
                 self.plot_item.setLabel('bottom', 'Time (s)')
-                #self.plot_item.getAxis('bottom').setTicks(None)
+                self.show_playhead(True)
 
             if self.waveform_curve is None:
                 self.waveform_curve = self.plot_item.plot(pen='w')  # Ensure it's created
