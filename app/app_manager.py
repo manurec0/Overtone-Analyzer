@@ -8,3 +8,4 @@ class AppState:
         self.isEnded = False
         self.hasFile = False
         self.isOscilloscope = False
+        self.pitch_algorithm = "SWIPE"

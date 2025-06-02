@@ -5,13 +5,15 @@ import pandas as pd
 import matplotlib
 matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
+from app.app_manager import AppState
 
 
 class AnalysisEngine:
-    def __init__(self, frame_length=4096, hopsize=256, rate=44100):
+    def __init__(self, app_state, frame_length=4096, hopsize=256, rate=44100):
         self.frame_length = frame_length
         self.hopsize = hopsize
         self.rate = rate
+        self.app_state = app_state
 
     def detect_pitch(self, signal, min_pitch=20.0, max_pitch=700.0):
         if len(signal) < self.frame_length:
@@ -25,6 +27,45 @@ class AnalysisEngine:
                           otype="f0")
         return next((p for p in f0 if p > 0), None)
 
+    def detect_pitch_yin(self, signal: np.ndarray, sr: int) -> float | None:
+        signal = signal.astype(np.float64)
+        signal -= np.mean(signal)
+        w_size = len(signal) // 2
+        taus = np.arange(1, w_size)
+        diff = np.array([np.sum((signal[:-t] - signal[t:]) ** 2) for t in taus])
+        cmndf = diff[1:] / (np.cumsum(diff)[1:] / np.arange(1, len(diff)))
+        threshold = 0.1
+        candidates = np.where(cmndf < threshold)[0]
+        if candidates.size == 0:
+            return None
+        tau = candidates[0]
+        if 1 < tau < len(cmndf) - 1:
+            y1, y2, y3 = cmndf[tau - 1:tau + 2]
+            denom = 2 * (y1 - 2 * y2 + y3)
+            if denom != 0:
+                tau += (y1 - y3) / denom
+        pitch = sr / (tau + 1)
+        return pitch if 20 <= pitch <= 700 else None
+
+    def detect_pitch_hps(self, signal: np.ndarray, rate: int = 44100, n_fft: int = 4096,
+                         max_downsample: int = 4) -> float | None:
+        if signal.dtype != np.float32:
+            signal = signal.astype(np.float32)
+        windowed = signal * np.hanning(len(signal))
+        spectrum = np.abs(np.fft.rfft(windowed, n=n_fft))
+        spectrum[spectrum == 0] = 1e-12  # Avoid log(0)
+
+        hps = spectrum.copy()
+        for h in range(2, max_downsample + 1):
+            decimated = spectrum[::h]
+            hps[:len(decimated)] *= decimated
+
+        freqs = np.fft.rfftfreq(n_fft, 1 / rate)
+        peak_idx = np.argmax(hps[:int(1000 * n_fft / rate)])
+        pitch = freqs[peak_idx]
+
+        return pitch if 20 <= pitch <= 700 else None
+
     def process_pitch_detection_full(self, data):
         times = []
         note_indices = []
@@ -33,16 +74,29 @@ class AnalysisEngine:
             data = data.astype(np.float32)
         data = np.clip(data, -1.0, 1.0)
 
+        algo = self.app_state.pitch_algorithm  # Access current algorithm
+
         for i in range(0, len(data) - self.frame_length, self.frame_length):
             chunk = data[i:i + self.frame_length]
-            f0 = self.detect_pitch(chunk)
+
+            # Select pitch detection method
+            if algo == "YIN":
+                f0 = self.detect_pitch_yin(chunk, self.rate)
+            elif algo == "HPS":
+                f0 = self.detect_pitch_hps(chunk, self.rate)
+            elif algo == "CREPE":
+                print("⚠️ CREPE not implemented yet.")
+                f0 = None
+            else:
+                f0 = self.detect_pitch(chunk)
+
             if f0 and f0 > 0:
                 note_index = helpers.freq_to_note_index(f0)
                 if note_index is not None:
                     times.append(i / self.rate)
                     note_indices.append(note_index)
 
-        print(f"✅ Full pitch detection finished. {len(times)} valid notes.")
+        print(f"✅ Full pitch detection ({algo}) finished. {len(times)} valid notes.")
         return np.array(times), np.array(note_indices)
 
     @staticmethod
@@ -108,7 +162,18 @@ class AnalysisEngine:
         peak = np.max(np.abs(signal)) + 1e-6
         signal = signal / peak
 
-        pitch = self.detect_pitch(signal)
+        algo = self.app_state.pitch_algorithm  # Read from global state
+
+        # Use selected algorithm
+        if algo == "YIN":
+            pitch = self.detect_pitch_yin(signal, self.rate)
+        elif algo == "HPS":
+            pitch = self.detect_pitch_hps(signal, self.rate)
+        elif algo == "CREPE":
+            print("⚠️ CREPE not implemented yet.")
+            pitch = None
+        else:  # Default SWIPE
+            pitch = self.detect_pitch(signal)
 
         window = np.hanning(len(signal))
         fft_size = self.frame_length * 2
@@ -127,7 +192,6 @@ class AnalysisEngine:
                 if harmonic_freq > self.rate / 2:
                     break
                 idx = np.argmin(np.abs(freqs - harmonic_freq))
-                #mag = self.parabolic_peak(magnitude, idx) # remove parabolic interpolation
                 harmonics_info.append({
                     "harmonic": n,
                     "freq": freqs[idx],

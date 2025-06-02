@@ -14,9 +14,9 @@ if __name__ == "__main__":
 
     audio_manager = AudioManager()
     player = Player()
-    analysis_engine = AnalysisEngine()
-
     app_state = AppState()
+    analysis_engine = AnalysisEngine(app_state)
+
     gui = AppGUI(audio_manager, player, analysis_engine, app_state)
     gui.show()
 

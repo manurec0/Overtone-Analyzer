@@ -12,6 +12,7 @@ class AppGUI(QMainWindow):
         self.audio_manager = audio_manager
         self.player = player
         self.analysis_engine = analysis_engine
+        self.pitch_algorithm = "SWIPE"
 
         self.setWindowTitle("Overtone Analyzer")
         self.resize(1200, 800)
@@ -53,6 +54,16 @@ class AppGUI(QMainWindow):
         top_bar_layout.addStretch()
         top_bar_layout.addLayout(controls_inner_layout)
         top_bar_layout.addStretch()
+
+        # Pitch Detection Selector (far right)
+        self.pitch_selector = QComboBox()
+        self.pitch_selector.addItems(["SWIPE", "YIN", "HPS", "CREPE"])
+        self.pitch_selector.setCurrentText("SWIPE")  # default
+        self.pitch_selector.setToolTip("Select pitch detection algorithm")
+        self.pitch_selector.currentTextChanged.connect(self.change_pitch_algorithm)
+        top_bar_layout.addWidget(QLabel("Pitch:"))
+        top_bar_layout.addWidget(self.pitch_selector)
+
         main_layout.addLayout(top_bar_layout)
 
         # Visualization
@@ -307,6 +318,17 @@ class AppGUI(QMainWindow):
         dialog = AudioSettingsDialog(self.audio_manager, self)
         dialog.exec()
 
+    def change_pitch_algorithm(self, algorithm):
+        self.app_state.pitch_algorithm = algorithm
+        print(f"🎚 Pitch algorithm set to: {algorithm}")
+        print("♻️ Clearing pitch cache due to algorithm change")
+        self.visualization.clear_caches()
+
+        if self.visualization.mode == "Fundamental Pitch Detection":
+            self.visualization.set_mode("Fundamental Pitch Detection")  # re-trigger replot
+        if self.visualization.mode == "Overtone Analyzer":
+            self.visualization.set_mode("Overtone Analyzer")
+
 
 class AudioSettingsDialog(QDialog):
     def __init__(self, audio_manager, parent=None):
@@ -336,4 +358,3 @@ class AudioSettingsDialog(QDialog):
         print(f"🔧 Selected device index: {selected_index}")
         self.audio_manager.set_input_device(selected_index)
         self.accept()
-
