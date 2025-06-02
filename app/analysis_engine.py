@@ -5,7 +5,8 @@ import pandas as pd
 import matplotlib
 matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
-from app.app_manager import AppState
+import librosa
+import warnings
 
 
 class AnalysisEngine:
@@ -45,7 +46,34 @@ class AnalysisEngine:
             if denom != 0:
                 tau += (y1 - y3) / denom
         pitch = sr / (tau + 1)
-        return pitch if 20 <= pitch <= 700 else None
+        return pitch if 50 <= pitch <= 700 else None
+
+    def detect_pitch_pyin(self, signal: np.ndarray, sr=44100) -> float | None:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", category=UserWarning)
+            warnings.simplefilter("ignore", category=FutureWarning)
+        # Make sure the signal is mono and float32
+        if signal.ndim > 1:
+            signal = signal.mean(axis=1)
+        if signal.dtype != np.float32:
+            signal = signal.astype(np.float32)
+
+        try:
+            f0, voiced_flag, voiced_probs = librosa.pyin(
+                y=signal,
+                sr=sr,
+                fmin=50,
+                fmax=700,
+                frame_length=self.frame_length,
+                hop_length=self.frame_length,  # Detect one pitch per frame
+                center=False
+            )
+            if f0 is not None and np.any(~np.isnan(f0)):
+                return float(f0[~np.isnan(f0)][0])  # Return first valid pitch
+            return None
+        except Exception as e:
+            print(f"⚠️ pYIN pitch detection failed: {e}")
+            return None
 
     def detect_pitch_hps(self, signal: np.ndarray, rate: int = 44100, n_fft: int = 4096,
                          max_downsample: int = 4) -> float | None:
@@ -64,7 +92,7 @@ class AnalysisEngine:
         peak_idx = np.argmax(hps[:int(1000 * n_fft / rate)])
         pitch = freqs[peak_idx]
 
-        return pitch if 20 <= pitch <= 700 else None
+        return pitch if 50 <= pitch <= 700 else None
 
     def process_pitch_detection_full(self, data):
         times = []
@@ -87,6 +115,8 @@ class AnalysisEngine:
             elif algo == "CREPE":
                 print("⚠️ CREPE not implemented yet.")
                 f0 = None
+            elif algo == "pYIN":
+                f0 = self.detect_pitch_pyin(chunk, self.rate)
             else:
                 f0 = self.detect_pitch(chunk)
 
@@ -172,6 +202,8 @@ class AnalysisEngine:
         elif algo == "CREPE":
             print("⚠️ CREPE not implemented yet.")
             pitch = None
+        elif algo == "pYIN":
+            pitch = self.detect_pitch_pyin(signal, self.rate)
         else:  # Default SWIPE
             pitch = self.detect_pitch(signal)
 

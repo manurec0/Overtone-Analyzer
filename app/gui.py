@@ -57,7 +57,7 @@ class AppGUI(QMainWindow):
 
         # Pitch Detection Selector (far right)
         self.pitch_selector = QComboBox()
-        self.pitch_selector.addItems(["SWIPE", "YIN", "HPS", "CREPE"])
+        self.pitch_selector.addItems(["SWIPE", "YIN", "pYIN", "HPS", "CREPE"])
         self.pitch_selector.setCurrentText("SWIPE")  # default
         self.pitch_selector.setToolTip("Select pitch detection algorithm")
         self.pitch_selector.currentTextChanged.connect(self.change_pitch_algorithm)
