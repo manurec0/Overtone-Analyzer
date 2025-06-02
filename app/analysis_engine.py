@@ -112,9 +112,6 @@ class AnalysisEngine:
                 f0 = self.detect_pitch_yin(chunk, self.rate)
             elif algo == "HPS":
                 f0 = self.detect_pitch_hps(chunk, self.rate)
-            elif algo == "CREPE":
-                print("⚠️ CREPE not implemented yet.")
-                f0 = None
             elif algo == "pYIN":
                 f0 = self.detect_pitch_pyin(chunk, self.rate)
             else:
@@ -199,9 +196,6 @@ class AnalysisEngine:
             pitch = self.detect_pitch_yin(signal, self.rate)
         elif algo == "HPS":
             pitch = self.detect_pitch_hps(signal, self.rate)
-        elif algo == "CREPE":
-            print("⚠️ CREPE not implemented yet.")
-            pitch = None
         elif algo == "pYIN":
             pitch = self.detect_pitch_pyin(signal, self.rate)
         else:  # Default SWIPE
