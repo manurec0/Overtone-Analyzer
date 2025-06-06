@@ -702,11 +702,18 @@ class Visualization(QWidget):
             harmonics_df.assign(label="harmonic")
         ], ignore_index=True)
 
-        metrics = self.analysis_engine.evaluate_results(ground_truth_df, self.detection_results)
+        # Run multi-type evaluation
+        metrics_dict = self.analysis_engine.evaluate_mode(
+            mode="overtone_analyzer",
+            f0_df=ground_truth_df,
+            detection_results=self.detection_results
+        )
 
-        print("🎯 Evaluation Metrics:")
-        for key, value in metrics.items():
-            print(f"{key}: {value:.4f}" if isinstance(value, float) else f"{key}: {value}")
+        # Print all evaluations
+        for section, metrics in metrics_dict.items():
+            print(f"\n🎯 Evaluation Metrics ({section.capitalize()}):")
+            for key, value in metrics.items():
+                print(f"{key}: {value:.4f}" if isinstance(value, float) else f"{key}: {value}")
 
     def show_playhead(self, show: bool):
         if show:
