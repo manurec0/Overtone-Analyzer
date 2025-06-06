@@ -1,0 +1,17 @@
+Dataset
+File Name;Author;Link to Original;Description
+overtone_scale;Wolfgang Saus;https://www.youtube.com/watch?v=C2BlshldeR8;This is a recording of the overtone scale over a steady fundamental (F#3), going up and down from the 4th harmonic to as high as the 12th harmonic
+overtone_scale02;Anna-Maria Hefele;https://www.youtube.com/watch?v=vC9Qh709gas;Similar recording of the overtone scale over a steady pitch (C#4). The key difference is that the louder overtones made it more challenging to detect the fundamental pitch without harmonic interference.
+changing_fundamental;Anna-Maria Hefele;https://www.youtube.com/watch?v=vC9Qh709gas;Recording of a changing fundamental melody while keeping a constant pitch in the second overtone melody.
+kargyraa;Alex Kuular;https://www.youtube.com/watch?v=aux_2FK50b4&t=1s;First of the three main styles of Mongolian throat singing, low frequency style, the pitch detection algorithms have trouble detecting this  low-freq sound (~69Hz)
+khoomei;Alex Kuular;https://www.youtube.com/watch?v=aux_2FK50b4&t=1s;The second style in traditional Mongolian throat singing, mid frequency range, still the algorithm has issues detecting such low frequencies.
+sygyt;Alex Kuular;https://www.youtube.com/watch?v=aux_2FK50b4&t=1s;High frequency Mongolian throat singing style, more in line with western overtone singing, this style is better suited for this algorithm. This recording features more expressive overtone dynamics.
+sygyt_high_overtone;Alex Kuular;https://www.youtube.com/watch?v=aux_2FK50b4&t=1s;This recording, similar to the above, reaches higher overtones
+paralel_overtones01;Anna-Maria Hefele;https://www.youtube.com/watch?v=vC9Qh709gas;This recording features a fundamental melody line, and the 4th harmonic parallel to the fundamental 
+paralel_overtones02;Anna-Maria Hefele;https://www.youtube.com/watch?v=vC9Qh709gas;The same concept as above, but with the 6th harmonic parallel to the fundamental melody line.
+fundamental_stpes01;Anna-Maria Hefele;https://www.youtube.com/watch?v=vC9Qh709gas;An overtone melody line over changing fundamentals changing in steps.
+fundamental_steps02;Anna-Maria Hefele;https://www.youtube.com/watch?v=vC9Qh709gas;An overtone melody line over changing fundamentals changing in steps, reaching higher harmonics and changing timing.
+fundamental_steps03;Anna-Maria Hefele;https://www.youtube.com/watch?v=vC9Qh709gas;An overtone melody line over changing fundamentals changing in steps, reaching higher harmonics, changing timing and adding more complexity in the end.
+fundamental_opposite_harmonic;Anna-Maria Hefele;https://www.youtube.com/watch?v=vC9Qh709gas;Decreasing pitch fundamental melody line with increasing pitch overtone melody line and vice-versa.
+fundamental_opposite_harmonic02;Anna-Maria Hefele;https://www.youtube.com/watch?v=vC9Qh709gas;Same concept as above, in a major mode.
+overtone_singing_song;Anna-Maria Hefele;https://www.youtube.com/watch?v=vC9Qh709gas;Performance of a full folk song using overtone polyphony.

@@ -72,9 +72,10 @@ class Visualization(QWidget):
 
         self.waveform_cache = None
         self.pitch_detection_cache = None
+
+        self.harmonic_scatter = None
         self.full_spectrogram_cache = None
 
-        # 🔽 NEW live plotting buffers
         self.live_note_times = []
         self.live_note_indices = []
         self.max_live_duration = 5
