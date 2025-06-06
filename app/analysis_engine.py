@@ -286,7 +286,20 @@ class AnalysisEngine:
         f0_df["end_time"] = f0_df["time"] + f0_df["duration"]
         harmonics_df["end_time"] = harmonics_df["time"] + harmonics_df["duration"]
 
+        if "end_time" not in f0_df.columns and "duration" in f0_df.columns:
+            f0_df["end_time"] = f0_df["time"] + f0_df["duration"]
+
         return f0_df, harmonics_df
+
+    @staticmethod
+    def load_f0_ground_truth(f0_path):
+        import pandas as pd
+
+        f0_df = pd.read_csv(f0_path, header=None)
+        f0_df.columns = ["time", "frequency", "duration", "confidence", "label"]
+        f0_df["frequency"] = f0_df["frequency"].astype(str).str.replace(",", ".").astype(float)
+        f0_df["end_time"] = f0_df["time"] + f0_df["duration"]
+        return f0_df
 
     def plot_ground_truth(f0_df, harmonics_df):
         """Plot ground truth fundamental and harmonic annotations with duration."""
@@ -336,6 +349,19 @@ class AnalysisEngine:
                 "frequency": freq
             })
 
+        return results
+
+    @staticmethod
+    def format_single_detection_results(times, indices, label, frame_duration=4096 / 44100):
+        results = []
+        for t, idx in zip(times, indices):
+            freq = helpers.note_index_to_freq(idx)
+            results.append({
+                "type": label,
+                "start_time": t,
+                "end_time": t + frame_duration,
+                "frequency": freq
+            })
         return results
 
     def evaluate_results(self, ground_truth_df, detection_results,
@@ -398,3 +424,33 @@ class AnalysisEngine:
         fundamental_detections = [r for r in detection_results if r["type"] == "fundamental"]
         return self.evaluate_results(fundamental_gt, fundamental_detections,
                                      freq_tolerance, min_time_overlap)
+
+    def evaluate_harmonics_only(self, f0_df, detection_results,
+                                freq_tolerance=20.0, min_time_overlap=0.3):
+        harmonic_gt = f0_df.copy()
+        harmonic_gt["label"] = "harmonic"
+        harmonic_detections = [r for r in detection_results if r["type"] == "harmonic"]
+        return self.evaluate_results(harmonic_gt, harmonic_detections,
+                                     freq_tolerance, min_time_overlap)
+
+    def evaluate_mode(self, mode, f0_df, detection_results):
+        if mode == "fundamental_pitch_detection":
+            return {
+                "fundamental": self.evaluate_fundamentals_only(f0_df, detection_results)
+            }
+
+        elif mode == "overtone_analyzer":
+            return {
+                "fundamental": self.evaluate_fundamentals_only(f0_df, detection_results),
+                "harmonic": self.evaluate_harmonics_only(f0_df, detection_results),
+                "global": self.evaluate_results(f0_df, detection_results),
+            }
+
+        return {}
+
+    def calculate_f1_score(tp, fp, fn):
+        precision = tp / (tp + fp + 1e-6)
+        recall = tp / (tp + fn + 1e-6)
+        f1 = 2 * precision * recall / (precision + recall + 1e-6)
+        return precision, recall, f1
+

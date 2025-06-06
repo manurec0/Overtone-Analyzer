@@ -288,6 +288,31 @@ class Visualization(QWidget):
         if len(times) > 0:
             self.pitch_scatter.setData(times, note_indices)
             self.plot_widget.setXRange(0, times[-1], padding=0)
+
+            wav_path = self.audio_manager.get_filepath()
+            wav_path = self.audio_manager.get_filepath()
+            if wav_path:
+                gt_dir = os.path.dirname(wav_path)
+                f0_path = os.path.join(gt_dir, "fundamental_ground_truth.csv")
+
+                if os.path.exists(f0_path):
+                    try:
+                        f0_df = self.analysis_engine.load_f0_ground_truth(f0_path)
+                        print("📊 Evaluating fundamental pitch detection...")
+
+                        detection_results = self.analysis_engine.format_single_detection_results(
+                            times, note_indices, label="fundamental"
+                        )
+
+                        eval_metrics = self.analysis_engine.evaluate_fundamentals_only(f0_df, detection_results)
+                        print("🎯 Evaluation Metrics (Fundamental):")
+                        for key, value in eval_metrics.items():
+                            print(f"{key}: {value:.4f}" if isinstance(value, float) else f"{key}: {value}")
+                    except Exception as e:
+                        print(f"⚠️ Could not load or evaluate ground truth: {e}")
+                else:
+                    print("ℹ️ No ground truth CSV found for fundamental pitch.")
+
         else:
             print("⚠️ No pitches detected.")
 
