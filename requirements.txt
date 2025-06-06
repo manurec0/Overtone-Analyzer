@@ -3,7 +3,8 @@ matplotlib==3.7.2
 numpy==1.24.3
 pandas==2.0.3
 PyAudio==0.2.14
-pyqtgraph==0.13.7
-PySide6==6.9.1
+pip install pyqtgraph==0.13.3
+PySide6==6.5.2
 pysptk==1.0.1
 soundfile==0.13.0
+python-vlc==3.0.21203

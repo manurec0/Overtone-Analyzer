@@ -1,4 +1,7 @@
-import vlc
+try:
+    import vlc
+except OSError:
+    raise RuntimeError("libvlc not found. Make sure VLC.app is installed at /Applications.")
 import numpy as np
 import threading
 import pyaudio

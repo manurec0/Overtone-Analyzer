@@ -315,7 +315,7 @@ class AnalysisEngine:
         plt.show()
 
     @staticmethod
-    def format_overtone_results(fund_times, fund_indices, harm_times, harm_indices, frame_duration=4096 / 44100):
+    def format_detection_results(fund_times, fund_indices, harm_times, harm_indices, frame_duration=4096 / 44100):
         results = []
 
         for t, idx in zip(fund_times, fund_indices):
@@ -391,45 +391,10 @@ class AnalysisEngine:
             "avg_freq_error": np.mean(freq_errors) if freq_errors else None
         }
 
-    def detect_active_harmonic_refined(self, freqs, magnitude, fundamental, max_harmonic=16):
-        if fundamental is None:
-            return None, None
-
-        def get_mag_at_freq(target_freq):
-            if target_freq >= self.rate / 2:
-                return -np.inf
-            idx = np.argmin(np.abs(freqs - target_freq))
-            return self.parabolic_peak(magnitude, idx)
-
-        harmonic_mags = []
-        for n in range(1, max_harmonic + 1):
-            harmonic_freq = n * fundamental
-            mag = get_mag_at_freq(harmonic_freq)
-            harmonic_mags.append((n, harmonic_freq, mag))
-
-        h1_mag = harmonic_mags[0][2]
-
-        # Check if H1 is alone (pure tone)
-        if all(h[2] < h1_mag - 25 for h in harmonic_mags[1:4]):  # H2–H4
-            return 1, h1_mag
-
-        # Search for strong, isolated harmonics ≥ H3
-        for i in range(2, len(harmonic_mags)):  # H3+
-            n, freq, mag = harmonic_mags[i]
-
-            # Compare to neighbors
-            prev_mag = harmonic_mags[i - 1][2] if i > 1 else -np.inf
-            next_mag = harmonic_mags[i + 1][2] if i + 1 < len(harmonic_mags) else -np.inf
-
-            # Isolation check: stronger than neighbors, and > noise floor
-            if mag > prev_mag + 6 and mag > next_mag + 6 and mag > -40:
-                return n, mag  # Isolated overtone
-
-        # Fallback: Pick best from H2–H8 based on mag, exclude H1
-        best = max(harmonic_mags[1:8], key=lambda x: x[2])
-        if best[2] > h1_mag - 10:
-            return best[0], best[2]
-
-        return None, None
-
-
+    def evaluate_fundamentals_only(self, f0_df, detection_results,
+                                   freq_tolerance=20.0, min_time_overlap=0.3):
+        fundamental_gt = f0_df.copy()
+        fundamental_gt["label"] = "fundamental"
+        fundamental_detections = [r for r in detection_results if r["type"] == "fundamental"]
+        return self.evaluate_results(fundamental_gt, fundamental_detections,
+                                     freq_tolerance, min_time_overlap)

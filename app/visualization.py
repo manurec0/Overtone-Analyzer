@@ -45,12 +45,20 @@ class Playhead:
             self.player.set_time(new_time * 1000.0)
 
     def on_hover(self, pos):
+        if self.line.scene() is None:
+            return  # Avoid crash on init
+
         vb = self.line.getViewBox()
         if vb is not None:
-            mouse_x = vb.mapSceneToView(pos).x()
-            if abs(mouse_x - self.line.value()) < 0.1:
-                self.line.setPen(self._hover_pen)
-            else:
+            try:
+                view_pos = vb.mapSceneToView(pos)
+                mouse_x = view_pos.x()
+                if abs(mouse_x - self.line.value()) < 0.1:
+                    self.line.setPen(self._hover_pen)
+                else:
+                    self.line.setPen(self._default_pen)
+            except Exception as e:
+                # Catch and fallback (optional: log or print once)
                 self.line.setPen(self._default_pen)
 
 
@@ -89,6 +97,7 @@ class Visualization(QWidget):
 
         self.plot_widget.setBackground('black')
         self.plot_item = self.plot_widget.getPlotItem()
+
         self.plot_item.showGrid(x=True, y=True)
         self.plot_item.setLabel('bottom', 'Time', units='s')
         self.playhead = Playhead(self.plot_item)
@@ -641,7 +650,7 @@ class Visualization(QWidget):
         print(f"✅ Plotted {len(fund_times)} fundamentals and {len(harm_times)} harmonics")
 
         # Store results
-        self.detection_results = self.analysis_engine.format_overtone_results(
+        self.detection_results = self.analysis_engine.format_detection_results(
             fund_times, fund_indices, harm_times, harm_indices,
             frame_duration=self.analysis_engine.frame_length / self.analysis_engine.rate
         )
