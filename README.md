@@ -1,6 +1,6 @@
 # Overtone Analyzer
 
-**Overtone Analyzer** is the official repository accompanying the final-year thesis:  
+**Overtone Analyzer** is the repository accompanying the final-year thesis:  
 **Development of a Real-Time Audio Analysis and Visualization Tool for Overtone Singing Using Fundamental Frequency Pitch Detection and Harmonic Extraction Techniques**.
 
 This project presents a real-time application for analyzing and visualizing overtone singing. It integrates robust pitch estimation algorithms (SWIPE, YIN, HPS, pYIN), spectral harmonic extraction, and a modular GUI system for visualization and evaluation. The tool is designed for researchers, educators, and vocal practitioners interested in the detailed study of overtone singing.
