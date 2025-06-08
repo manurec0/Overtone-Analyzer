@@ -84,8 +84,15 @@ class Visualization(QWidget):
         self.harmonic_scatter = None
         self.full_spectrogram_cache = None
 
+        self.gt_fund_scatter = None
+        self.gt_harm_scatter = None
+        self.f0_df = None
+        self.gt_fund_items = []
+        self.gt_harm_items = []
+
         self.live_note_times = []
         self.live_note_indices = []
+
         self.max_live_duration = 5
         self.live_waveform_buffer = np.zeros(0, dtype=np.float32)
         self.live_time = 0.0
@@ -298,6 +305,7 @@ class Visualization(QWidget):
                 if os.path.exists(f0_path):
                     try:
                         f0_df = self.analysis_engine.load_f0_ground_truth(f0_path)
+                        self.f0_df = f0_df
                         print("📊 Evaluating fundamental pitch detection...")
 
                         detection_results = self.analysis_engine.format_single_detection_results(
@@ -310,8 +318,10 @@ class Visualization(QWidget):
                             print(f"{key}: {value:.4f}" if isinstance(value, float) else f"{key}: {value}")
                     except Exception as e:
                         print(f"⚠️ Could not load or evaluate ground truth: {e}")
+                        self.f0_df = None
                 else:
                     print("ℹ️ No ground truth CSV found for fundamental pitch.")
+                    self.f0_df = None
 
         else:
             print("⚠️ No pitches detected.")
@@ -607,6 +617,8 @@ class Visualization(QWidget):
                 self.plot_item.setYRange(0, len(NOTE_NAMES_FULL))
 
                 self.process_overtone_analyzer_full(self.audio_manager.wav_data)
+            if self.app_state.showGroundTruth:
+                self.toggle_ground_truth_overlay(True)
 
     def clear_caches(self):
         self.waveform_cache = None
@@ -724,3 +736,136 @@ class Visualization(QWidget):
     def get_waveform_points(self, signal):
         x = np.arange(len(signal))
         return x, signal
+
+    def overlay_ground_truth_fundamentals(self):
+        if not self.app_state.showGroundTruth:
+            print("📊 Ground truth overlay disabled (flag off).")
+            return
+
+        if not hasattr(self, 'f0_df') or self.f0_df is None:
+            print("⚠️ No cached ground truth data to overlay.")
+            return
+
+        try:
+            df = self.f0_df
+
+            # Convert frequencies to note indices if not already done
+            if "note_index" not in df.columns:
+                print("ℹ️ Converting frequency to note_index...")
+                df["note_index"] = df["frequency"].apply(freq_to_note_index)
+                df = df[df["note_index"].notnull()]
+                self.f0_df = df  # ✅ Update the cached DataFrame
+
+            # Clear existing overlay items if any
+            self.clear_ground_truth_overlay()
+
+            # Initialize list to store overlay segments
+            self.gt_fund_items = []
+
+            # Draw horizontal lines for each note segment
+            for _, row in df.iterrows():
+                x = [row["time"], row["end_time"]]
+                y = [row["note_index"], row["note_index"]]
+                curve = pg.PlotCurveItem(x, y, pen=pg.mkPen('blue', width=6))
+                self.plot_item.addItem(curve)
+                self.gt_fund_items.append(curve)
+
+            print(f"✅ Overlayed {len(self.gt_fund_items)} ground truth fundamental segments")
+
+        except Exception as e:
+            print(f"❌ Failed to overlay fundamental ground truth: {e}")
+
+    def overlay_ground_truth_overtone_analyzer(self):
+        if not self.app_state.showGroundTruth:
+            print("📊 Ground truth overlay disabled (flag off).")
+            return
+
+        wav_path = self.audio_manager.get_filepath()
+        if not wav_path:
+            print("⚠️ No WAV path to locate ground truth.")
+            return
+
+        gt_dir = os.path.dirname(wav_path)
+        f0_path = os.path.join(gt_dir, "fundamental_ground_truth.csv")
+        harm_path = os.path.join(gt_dir, "harmonic_ground_truth.csv")
+
+        if not os.path.exists(f0_path) or not os.path.exists(harm_path):
+            print("⚠️ Missing ground truth CSV files.")
+            return
+
+        try:
+            # Clear previous overlays
+            self.clear_ground_truth_overlay()
+
+            f0_df, harm_df = self.analysis_engine.load_ground_truth(f0_path, harm_path)
+
+            # Convert frequencies to note indices if needed
+            if "note_index" not in f0_df.columns:
+                print("ℹ️ Converting fundamental frequencies to note indices...")
+                f0_df["note_index"] = f0_df["frequency"].apply(freq_to_note_index)
+                f0_df = f0_df[f0_df["note_index"].notnull()]
+
+            if "note_index" not in harm_df.columns:
+                print("ℹ️ Converting harmonic frequencies to note indices...")
+                harm_df["note_index"] = harm_df["frequency"].apply(freq_to_note_index)
+                harm_df = harm_df[harm_df["note_index"].notnull()]
+
+            self.gt_fund_items = []
+            self.gt_harm_items = []
+
+            # Plot fundamental segments
+            for _, row in f0_df.iterrows():
+                x = [row["time"], row["end_time"]]
+                y = [row["note_index"], row["note_index"]]
+                curve = pg.PlotCurveItem(x, y, pen=pg.mkPen('blue', width=6))
+                self.plot_item.addItem(curve)
+                self.gt_fund_items.append(curve)
+
+            # Plot harmonic segments
+            for _, row in harm_df.iterrows():
+                x = [row["time"], row["end_time"]]
+                y = [row["note_index"], row["note_index"]]
+                curve = pg.PlotCurveItem(x, y, pen=pg.mkPen('lime', width=4))
+                self.plot_item.addItem(curve)
+                self.gt_harm_items.append(curve)
+
+            print(
+                f"✅ Overlayed {len(self.gt_fund_items)} fundamental and {len(self.gt_harm_items)} harmonic GT segments")
+
+        except Exception as e:
+            print(f"❌ Failed to overlay overtone GT: {e}")
+
+    def clear_ground_truth_overlay(self):
+        # Remove any tracked fundamental overlay items
+        if hasattr(self, 'gt_fund_items'):
+            for item in self.gt_fund_items:
+                self.plot_item.removeItem(item)
+            self.gt_fund_items.clear()
+
+        # Remove any tracked harmonic items
+        if hasattr(self, 'gt_harm_items'):
+            for item in self.gt_harm_items:
+                self.plot_item.removeItem(item)
+            self.gt_harm_items.clear()
+
+        print("🧼 Cleared ground truth overlays")
+
+    def toggle_ground_truth_overlay(self, enabled: bool):
+        self.clear_ground_truth_overlay()
+
+        if not enabled:
+            print("🚫 Ground truth overlay turned OFF.")
+            return
+
+        if self.mode == "Fundamental Pitch Detection":
+            print("📌 Overlaying ground truth for Fundamental Pitch Detection...")
+            self.overlay_ground_truth_fundamentals()
+
+        elif self.mode == "Overtone Analyzer":
+            print("📌 Overlaying ground truth for Overtone Analyzer...")
+            self.overlay_ground_truth_overtone_analyzer()
+
+        else:
+            print(f"⚠️ Ground truth overlay not available in mode: {self.mode}")
+
+

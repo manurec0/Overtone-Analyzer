@@ -27,14 +27,14 @@ class AppGUI(QMainWindow):
         controls_inner_layout.setAlignment(Qt.AlignCenter)
 
         self.rewind_start_btn = QPushButton("⏮", clicked=self.rewind_to_start)
-        self.rewind_5s_btn = QPushButton("⏪ 5s", clicked=self.rewind_5s)
+        self.rewind_5s_btn = QPushButton("⏪", clicked=self.rewind_5s)
         self.play_pause_btn = QPushButton("▶️ Play", clicked=self.toggle_play)
         self.play_pause_btn.setEnabled(False)
-        self.forward_5s_btn = QPushButton("⏩ 5s", clicked=self.forward_5s)
+        self.forward_5s_btn = QPushButton("⏩", clicked=self.forward_5s)
         self.forward_end_btn = QPushButton("⏭", clicked=self.forward_to_end)
-        self.record_btn = QPushButton("🔴 Record", clicked=self.toggle_record)
-        self.settings_btn = QPushButton("⚙️ Settings", clicked=self.open_audio_settings)
-        self.live_btn = QPushButton("Live Mode", clicked=self.toggle_live_mode)
+        self.record_btn = QPushButton("🔴", clicked=self.toggle_record)
+        self.settings_btn = QPushButton("Settings", clicked=self.open_audio_settings)
+        self.live_btn = QPushButton("Real-Time Mode", clicked=self.toggle_live_mode)
 
         self.oscilloscope_btn = QCheckBox("Oscilloscope Mode")
         self.oscilloscope_btn.setEnabled(False)
@@ -61,12 +61,40 @@ class AppGUI(QMainWindow):
         self.pitch_selector.setCurrentText("SWIPE")  # default
         self.pitch_selector.setToolTip("Select pitch detection algorithm")
         self.pitch_selector.currentTextChanged.connect(self.change_pitch_algorithm)
-        top_bar_layout.addWidget(QLabel("Pitch:"))
+        top_bar_layout.addWidget(QLabel("Pitch Detection Method:"))
         top_bar_layout.addWidget(self.pitch_selector)
 
         main_layout.addLayout(top_bar_layout)
 
-        # Visualization
+        # Ground Truth + Pitch Info Bar Below Top Bar
+        info_bar_layout = QHBoxLayout()
+        info_bar_layout.setContentsMargins(10, 0, 10, 0)  # Optional spacing
+
+        # Left side: Pitch and Harmonic labels
+        info_labels_layout = QVBoxLayout()
+        info_labels_layout.setAlignment(Qt.AlignLeft)
+
+        self.pitch_label = QLabel("Note: ...")
+        self.harmonic_label = QLabel("Active Harmonic: ...")
+        self.pitch_label.setStyleSheet("color: white; font-size: 14px;")
+        self.harmonic_label.setStyleSheet("color: white; font-size: 14px;")
+
+        info_labels_layout.addWidget(self.pitch_label)
+        info_labels_layout.addWidget(self.harmonic_label)
+
+        info_bar_layout.addLayout(info_labels_layout)
+
+        info_bar_layout.addStretch()  # Push ground truth toggle to the right
+
+        self.ground_truth_checkbox = QCheckBox("Overlay Ground Truth")
+        self.ground_truth_checkbox.setEnabled(False)
+        self.ground_truth_checkbox.clicked.connect(self.toggle_ground_truth)
+        info_bar_layout.addWidget(self.ground_truth_checkbox)
+
+        # Add to main layout just below top bar
+        main_layout.addLayout(info_bar_layout)
+
+        # Visualization below labels
         self.visualization = Visualization(app_state)
         main_layout.addWidget(self.visualization)
         self.visualization.live_status_update.connect(self.update_live_status_label)
@@ -101,15 +129,6 @@ class AppGUI(QMainWindow):
             "Overtone Analyzer"])
         self.mode_selector.currentTextChanged.connect(self.change_mode)
         bottom_layout.addWidget(self.mode_selector)
-
-        # Display Labels
-
-        self.pitch_label = QLabel("Note: ...")
-        self.harmonic_label = QLabel("Active Harmonic: ...")
-        self.pitch_label.setStyleSheet("color: white; font-size: 14px;")
-        self.harmonic_label.setStyleSheet("color: white; font-size: 14px;")
-        main_layout.addWidget(self.pitch_label)
-        main_layout.addWidget(self.harmonic_label)
 
     def load_wav(self):
         filepath, _ = QFileDialog.getOpenFileName(self, "Open WAV File", "", "WAV files (*.wav)")
@@ -277,6 +296,14 @@ class AppGUI(QMainWindow):
             self.oscilloscope_btn.setEnabled(False)
             self.app_state.isOscilloscope = False
 
+        # Ground truth toggle only enabled in specific modes and when file is loaded
+        if mode in ["Fundamental Pitch Detection", "Overtone Analyzer"] and self.player.has_data():
+            self.ground_truth_checkbox.setEnabled(True)
+        else:
+            self.ground_truth_checkbox.setChecked(False)
+            self.ground_truth_checkbox.setEnabled(False)
+            self.app_state.showGroundTruth = False
+
     def run(self):
         self.visualization.start_loop(self.audio_manager, self.player, self.analysis_engine)
 
@@ -312,6 +339,10 @@ class AppGUI(QMainWindow):
         self.oscilloscope_btn.setChecked(False)  # Reset checkbox
         self.oscilloscope_btn.setEnabled(False)  # Disable checkbox
 
+        self.ground_truth_checkbox.setChecked(False)
+        self.ground_truth_checkbox.setEnabled(False)
+        self.app_state.showGroundTruth = False
+
         print("🧹 Cleared loaded WAV file and reset visualizations.")
 
     def open_audio_settings(self):
@@ -328,6 +359,11 @@ class AppGUI(QMainWindow):
             self.visualization.set_mode("Fundamental Pitch Detection")  # re-trigger replot
         if self.visualization.mode == "Overtone Analyzer":
             self.visualization.set_mode("Overtone Analyzer")
+
+    def toggle_ground_truth(self):
+        self.app_state.showGroundTruth = self.ground_truth_checkbox.isChecked()
+        print(f"📊 Ground Truth Overlay: {'ON' if self.app_state.showGroundTruth else 'OFF'}")
+        self.visualization.toggle_ground_truth_overlay(self.app_state.showGroundTruth)
 
 
 class AudioSettingsDialog(QDialog):
