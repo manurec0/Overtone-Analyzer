@@ -11,7 +11,7 @@ This project presents a real-time application for analyzing and visualizing over
 
 ### Overview
 
-The dataset includes **15 overtone singing performances**, each sourced from YouTube and manually annotated. Annotations are provided in Sonic Visualiser-compatible CSV format and include both **fundamental frequency tracks** and, in select cases, **harmonic annotations**. The dataset supports evaluation of pitch detection methods under the unique spectral characteristics of overtone singing.
+The dataset includes **15 overtone singing performances**, each sourced from YouTube and manually annotated. Annotations are provided in Sonic Visualiser-compatible CSV format and include both **fundamental frequency tracks** and **harmonic annotations**. The dataset supports evaluation of pitch detection methods under the unique spectral characteristics of overtone singing.
 
 ### Dataset Curation Process
 
