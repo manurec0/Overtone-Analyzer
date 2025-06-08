@@ -15,7 +15,7 @@ The dataset includes **15 overtone singing performances**, each sourced from You
 
 ### Dataset Curation Process
 
-- **Manual Selection**: Recordings were chosen based on clarity of overtone technique and stylistic variety (e.g., khoomei, kargyraa, harmonic singing).
+- **Manual Selection**: Recordings were chosen based on clarity of overtone technique and stylistic variety (e.g., sygyt, khoomei, kargyraa, harmonic singing).
 - **Annotation**: Ground truth files were manually labeled for fundamental pitch and overtone content using Sonic Visualiser.
 - **Evaluation-Ready**: Each file is aligned for algorithmic comparison using automated metrics (precision, recall, F1-score).
 
