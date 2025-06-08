@@ -33,6 +33,7 @@ class AppGUI(QMainWindow):
         self.forward_5s_btn = QPushButton("⏩", clicked=self.forward_5s)
         self.forward_end_btn = QPushButton("⏭", clicked=self.forward_to_end)
         self.record_btn = QPushButton("🔴", clicked=self.toggle_record)
+        self.record_btn.setEnabled(False)
         self.settings_btn = QPushButton("Settings", clicked=self.open_audio_settings)
         self.live_btn = QPushButton("Real-Time Mode", clicked=self.toggle_live_mode)
 
