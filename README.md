@@ -24,7 +24,7 @@ The dataset includes **15 overtone singing performances**, each sourced from You
 Each sample lies under its own folder in the `data/` directory and contains:
 - `sample_name.wav`: the recorded performance
 - `fundamental_ground_truth.csv`: fundamental frequency annotation
-- `harmonic_ground_truth.csv`: harmonic annotations (optional)
+- `harmonic_ground_truth.csv`: harmonic annotations
 
 ---
 
@@ -34,18 +34,17 @@ Each sample lies under its own folder in the `data/` directory and contains:
 
 The GUI-based application provides multiple modes for real-time and offline audio analysis:
 
-- **Waveform Mode**: Displays time-domain amplitude with scrolling playhead
-- **Piano Roll Mode**: Shows detected pitch over time as note blocks
-- **Spectrogram Mode**: Log-scaled frequency heatmap with optional zoom
-- **Overtone Profile Mode**: Extracts harmonics and labels intervals
+- **Waveform Mode**: Displays time-domain amplitude with scrolling interactive playhead
+- **Piano Roll Mode**: Shows detected pitch over time in a scatter plot for fundamental pitch and overtones
+- **Spectrogram Mode**: Frequency heatmap with optional zoom
+- **Overtone Profile Mode**: Displays individual harmonic magnitudes
 - **Oscilloscope Mode**: Displays waveform at a per-frame level during playback
 
 ### Features
 
 - Live microphone or WAV file input
 - Real-time pitch tracking using SWIPE, YIN, HPS, or pYIN
-- Custom ground truth overlay and visual evaluation
-- Modular UI built with PySide6 and PyQtGraph
+- Ground truth overlay and visual evaluation
 - Internal evaluation engine for precision, recall, and F1 metrics
 
 ---
@@ -55,7 +54,7 @@ The GUI-based application provides multiple modes for real-time and offline audi
 We recommend using a Python virtual environment:
 
 ```bash
-git clone https://github.com/yourusername/OvertoneAnalyzer.git
+git clone https://github.com/manurec0/Overtone-Analyzer.git
 cd OvertoneAnalyzer
 python3 -m venv venv
 source venv/bin/activate
