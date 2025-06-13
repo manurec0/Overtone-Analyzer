@@ -28,6 +28,11 @@ def note_index_to_freq(index):
         return 440.0 * 2 ** ((index - NOTE_NAMES_FULL.index("A4")) / 12)
     return None
 
+def hz_diff_in_cents(f1, f2):
+    if f1 <= 0 or f2 <= 0:
+        return float('inf')
+    return abs(1200 * np.log2(f2 / f1))
+
 
 
 

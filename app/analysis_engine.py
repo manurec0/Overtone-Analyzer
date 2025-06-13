@@ -75,21 +75,26 @@ class AnalysisEngine:
             print(f"⚠️ pYIN pitch detection failed: {e}")
             return None
 
-    def detect_pitch_hps(self, signal: np.ndarray, rate: int = 44100, n_fft: int = 4096,
-                         max_downsample: int = 4) -> float | None:
+    def detect_pitch_hps(self, signal: np.ndarray, rate: int = 44100, n_fft: int = 4096) -> float | None:
+        k = self.app_state.hps_k
+
         if signal.dtype != np.float32:
             signal = signal.astype(np.float32)
         windowed = signal * np.hanning(len(signal))
         spectrum = np.abs(np.fft.rfft(windowed, n=n_fft))
-        spectrum[spectrum == 0] = 1e-12  # Avoid log(0)
+        spectrum[spectrum == 0] = 1e-12
 
         hps = spectrum.copy()
-        for h in range(2, max_downsample + 1):
+        for h in range(2, k + 1):
             decimated = spectrum[::h]
             hps[:len(decimated)] *= decimated
 
         freqs = np.fft.rfftfreq(n_fft, 1 / rate)
-        peak_idx = np.argmax(hps[:int(1000 * n_fft / rate)])
+        max_bin = min(len(hps), int(1000 * n_fft / rate))
+        if max_bin == 0:
+            return None
+
+        peak_idx = np.argmax(hps[:max_bin])
         pitch = freqs[peak_idx]
 
         return pitch if 50 <= pitch <= 700 else None
@@ -365,7 +370,7 @@ class AnalysisEngine:
         return results
 
     def evaluate_results(self, ground_truth_df, detection_results,
-                         freq_tolerance=20.0, min_time_overlap=0.3):
+                         freq_tolerance=20.0, cent_tolerance=50.0, min_time_overlap=0.3):
         from collections import defaultdict
 
         gt_matched = set()
@@ -383,7 +388,7 @@ class AnalysisEngine:
             for j, gt in enumerate(gt_segments):
                 if gt["label"].lower().startswith(det["type"]):
                     # Check frequency match
-                    if abs(gt["frequency"] - det["frequency"]) <= freq_tolerance:
+                    if helpers.hz_diff_in_cents(gt["frequency"], det["frequency"]) <= cent_tolerance:
                         # Check time overlap
                         start = max(gt["time"], det["start_time"])
                         end = min(gt["end_time"], det["end_time"])
@@ -418,32 +423,49 @@ class AnalysisEngine:
         }
 
     def evaluate_fundamentals_only(self, f0_df, detection_results,
-                                   freq_tolerance=20.0, min_time_overlap=0.3):
+                                   freq_tolerance=20.0, cent_tolerance=50.0, min_time_overlap=0.3):
         fundamental_gt = f0_df.copy()
         fundamental_gt["label"] = "fundamental"
         fundamental_detections = [r for r in detection_results if r["type"] == "fundamental"]
         return self.evaluate_results(fundamental_gt, fundamental_detections,
-                                     freq_tolerance, min_time_overlap)
+                                     freq_tolerance, cent_tolerance, min_time_overlap)
 
     def evaluate_harmonics_only(self, f0_df, detection_results,
-                                freq_tolerance=20.0, min_time_overlap=0.3):
+                                freq_tolerance=20.0, cent_tolerance=50.0, min_time_overlap=0.3):
         harmonic_gt = f0_df.copy()
         harmonic_gt["label"] = "harmonic"
         harmonic_detections = [r for r in detection_results if r["type"] == "harmonic"]
         return self.evaluate_results(harmonic_gt, harmonic_detections,
-                                     freq_tolerance, min_time_overlap)
+                                     freq_tolerance, cent_tolerance, min_time_overlap)
 
-    def evaluate_mode(self, mode, f0_df, detection_results):
+    def evaluate_mode(self, mode, f0_df, detection_results,
+                      cent_tolerance=50.0, min_time_overlap=0.3):
         if mode == "fundamental_pitch_detection":
             return {
-                "fundamental": self.evaluate_fundamentals_only(f0_df, detection_results)
+                "fundamental": self.evaluate_fundamentals_only(
+                    f0_df, detection_results,
+                    cent_tolerance=cent_tolerance,
+                    min_time_overlap=min_time_overlap
+                )
             }
 
         elif mode == "overtone_analyzer":
             return {
-                "fundamental": self.evaluate_fundamentals_only(f0_df, detection_results),
-                "harmonic": self.evaluate_harmonics_only(f0_df, detection_results),
-                "global": self.evaluate_results(f0_df, detection_results),
+                "fundamental": self.evaluate_fundamentals_only(
+                    f0_df, detection_results,
+                    cent_tolerance=cent_tolerance,
+                    min_time_overlap=min_time_overlap
+                ),
+                "harmonic": self.evaluate_harmonics_only(
+                    f0_df, detection_results,
+                    cent_tolerance=cent_tolerance,
+                    min_time_overlap=min_time_overlap
+                ),
+                "global": self.evaluate_results(
+                    f0_df, detection_results,
+                    cent_tolerance=cent_tolerance,
+                    min_time_overlap=min_time_overlap
+                )
             }
 
         return {}
