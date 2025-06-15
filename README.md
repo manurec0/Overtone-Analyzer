@@ -51,7 +51,7 @@ The GUI-based application provides multiple modes for real-time and offline audi
 
 ## Installation
 
-We recommend using a Python virtual environment:
+Using a Python virtual environment is recommended:
 
 ```bash
 git clone https://github.com/manurec0/Overtone-Analyzer.git
