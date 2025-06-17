@@ -235,15 +235,15 @@ class AppGUI(QMainWindow):
         if self.app_state.isLive:
             print("✅ Live Feed mode activated")
             self.start_live_mode()
-            self.live_btn.setText("Stop Live Mode")
+            self.live_btn.setText("Stop Real-Time Mode")
             self.play_pause_btn.setEnabled(False)
             self.record_btn.setEnabled(False)
         else:
             print("🛑 Live Feed mode deactivated")
             self.stop_live_mode()
-            self.live_btn.setText("Live Mode")
+            self.live_btn.setText("Real-Time Mode")
             self.play_pause_btn.setEnabled(True)
-            self.record_btn.setEnabled(True)
+            # self.record_btn.setEnabled(True) recording disabled
 
     #@Slot(str, bool)
     def update_live_status_label(self, text, is_pitch):
