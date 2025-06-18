@@ -10,4 +10,9 @@ class AppState:
         self.isOscilloscope = False
         self.showGroundTruth = False
         self.pitch_algorithm = "SWIPE"
-        self.hps_k = 4 # default hps parameter
+
+        # analysis
+        self.hps_k = 4  # default hps parameter
+        self.max_pitch = 700.0
+        self.min_pitch = 20.0
+
